@@ -1,0 +1,1271 @@
+---
+title: "COVID Network GLASSO Insample Analysis"
+author: "Jack Jewson"
+date: "19/07/2022"
+output: html_document
+---
+
+Here we run the Network GLASSO for the COVID19 data using the Geodist and Facebook networks
+
+# Preliminaries {.tabset}
+
+## working directory
+
+```{r working_directory, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+data_dir <- '/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/paper_code_github/'
+
+```
+
+## Packages
+
+```{r packages, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+## UNLOAD ALL PACKAGES FIRST 
+#rm(list = ls(all = TRUE))
+
+library(tidyverse)
+
+library(readr)
+library(devtools)
+#install_github("pzwiernik/golazo", build_vignettes=TRUE)
+library(golazo)
+#source('Network_GLASSO/GOLAZO_function.R')
+library(polynom)
+
+library(graphics)
+library(xtable)
+library(knitr)
+
+#### For the MAPS
+
+
+
+library(ggmap)   # spatial tools to interact with ggplot2
+library(ggplot2) # tidyverse: actually more basic than base R plotting
+library(usmap)
+
+library(dplyr)
+
+```
+
+## Functions 
+
+```{r functions, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+ebic_eval <- function(n, R, U, ebic.gamma, edge.tol){
+  res <- golazo(R, L = -U, U = U, verbose = FALSE)
+  K <- res$K
+  KR <- stats::cov2cor(K)         #to make edge count independend of scalings
+  nedg <- length(which(abs(KR[upper.tri(abs(KR), diag = FALSE)]) > edge.tol))
+  ## p is the dimensions of R I think - this should be fine but isn't great code!
+  ebic <- -(n)*(log(det(K)) - sum(R*K)) + nedg * (log(n) + 4 * ebic.gamma * log(p))
+  return(ebic)   
+}
+
+ebic_eval_network <- function(n, R, A, beta0, beta1, ebic.gamma, edge.tol){
+  U <- exp(beta0 + beta1*A)          
+  diag(U) <- 0
+  return(ebic_eval(n, R, U, ebic.gamma, edge.tol))
+}
+
+ebic_eval_two_networks <- function(n, R, A1, A2, beta0, beta1, beta2, ebic.gamma, edge.tol){
+   U <- exp(beta0 + beta1*A1 + beta2*A2) 
+   diag(U) <- 0
+   return(ebic_eval(n, R, U, ebic.gamma, edge.tol))
+}
+
+
+standardise_network_matrix_tri <- function(A) {
+  p <- nrow(A)
+  
+  A_tri <- A[upper.tri(A)]
+  bar_A_tri <- mean(A_tri)
+  S2_A_tri <- 1/length(A_tri)*sum((A_tri - bar_A_tri)^2)
+  
+  return((A - bar_A_tri)/sqrt(S2_A_tri))
+}
+
+## Turning the correlation matrix given by the golazo function back to a covariance matrix, useful in out-of-sample-llh
+cor2cov <- function(Theta_cor, sigma2_vect){
+  # Theta_cor is correlation matrix, sqrt(sigma2_vect) is the standard deviations of each variable
+  p <- nrow(Theta_cor)
+  Theta_cov <- matrix(NA, nrow = p, ncol = p)
+  for(i in 1:p){
+    Theta_cov[, i] <- Theta_cor[,i]*sqrt(sigma2_vect[i])*sqrt(sigma2_vect)   
+  }
+  return(Theta_cov)
+}
+
+
+threshold <- function(Rho_mat, threshold){
+  return(Rho_mat*(abs(Rho_mat) >= threshold))
+}
+
+
+
+## No Network matrix
+beta0_max_GLASSO <- function(R){
+  return(log(max(abs(R - diag(diag(R))))))## check we can irgnore diags
+  #return(log(max(max(diag(R)^2) - abs(R)))) ## Piotr's updated bound!
+}
+
+
+```
+
+## Hyparameters
+
+```{r hyperparameters, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+ebic.gamma <- 0           # set to zero to get BIC
+edge.tol <-  1e-6         # be consistent with GLASSO+EBIC method
+
+```
+
+# Data Loading
+
+```{r data_load, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+setwd(data_dir)
+
+covid1 <- as.matrix(read_csv("Data/COVID/Pre-processed Data/covid1.csv"))[,2:100]
+
+geodist1 <- as.matrix(read_csv("Data/COVID/Pre-processed Data/geodist1.csv"))[,2:100]
+SCI_index1 <- as.matrix(read_csv("Data/COVID/Pre-processed Data/SCI_index1.csv"))[,2:100]
+
+n <- nrow(covid1)
+p <- ncol(covid1)
+N <- 1
+
+```
+
+# GLASSO {.tabset}
+
+## Inference
+
+```{r GLASSO_run, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta0_GLASSO <-rep(NA, N)
+#beta0_grid_length <- 20
+#beta0_grid_min <- -3
+beta0_grid_max <- -1.25
+beta0_grid_min <- -2.5
+
+beta0_grid <- seq(beta0_grid_min, beta0_grid_max, length.out = beta0_grid_length )
+
+
+ebic_eval_optim_GLASSO <- rep(NA, N)
+
+time_GLASSO_freq.start <- Sys.time()
+for(j in 1:N){
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(covid1))  
+  
+  ## grid-search ##
+  #beta0_grid_max <- beta0_max_GLASSO(R)
+  #beta0_grid <- seq(beta0_grid_min, beta0_grid_max, length.out = beta0_grid_length )
+  
+  beta_optimise <- rep(NA, beta0_grid_length)
+  
+  for(b in 1:beta0_grid_length){
+    cat("b = ", b, "\n")
+    beta_optimise[b] <- ebic_eval(n, R, U = exp(beta0_grid[b])*U, ebic.gamma = ebic.gamma, edge.tol = edge.tol)
+  }
+  
+  beta0_GLASSO[j] <- beta0_grid[which.min(beta_optimise)]
+
+  ebic_eval_optim_GLASSO[j] <- min(beta_optimise)
+  
+  #### Using the optimal beta0 ##
+  GraphicalModel <- golazo (R, L = exp(beta0_GLASSO[j]) * L, U =exp(beta0_GLASSO[j])* U, tol = 1e-7, verbose=FALSE)
+  
+ 
+  Rho_hat_GLASSO <- threshold(cov2cor(GraphicalModel$K), edge.tol)
+
+}
+time_GLASSO_freq.end <- Sys.time()
+
+```
+
+## Analysis
+
+```{r GLASSO_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+beta0_GLASSO # -3.690654  # -1.631706
+
+ebic_eval_optim_GLASSO
+
+sum(Rho_hat_GLASSO[lower.tri((Rho_hat_GLASSO))] != 0) # 1813 # 608
+sum(Rho_hat_GLASSO[lower.tri((Rho_hat_GLASSO))] == 0) # 3038 # 4243
+
+
+cov2cor(solve(Rho_hat_GLASSO))[1:3, 1:3]
+cov2cor(cov(covid1))[1:3, 1:3]
+
+time_GLASSO_freq1 <- time_GLASSO_freq.end - time_GLASSO_freq.start
+time_GLASSO_freq <- round(time_GLASSO_freq1/N, 3)
+time_GLASSO_freq
+
+
+```
+
+## Map Plot
+
+```{r GLASSO_Map_Plot, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## Get Ready the GeoNetwotk
+####################################
+
+## nodes, import the latitude and lon of each  county
+nodes <- read_csv("Data/COVID/Raw Data/nodes118.csv")[, 2:6]
+nodes[49, 2] <- -158.2019740                ## replace the lat and lon of Honolulu(Hawaii) by INTPTLAT and INTPTLON
+nodes[49, 3] <-  21.4613654
+
+```
+
+```{r GLASSO_Map_Plot2, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+write.csv(- Rho_hat_GLASSO , file = paste("mRho_hat_GLASSO", ".csv", sep = ""))
+
+# ## edges connection for GLASSO
+#par_corr_GLASSO <- - Rho_hat_GLASSO  ## for some reason this doesn;t work 
+par_corr_GLASSO <- read_csv("mRho_hat_GLASSO.csv")[, 2:100] 
+m1 <- par_corr_GLASSO
+
+m1 <- m1 %>% 
+  rename_all(~stringr::str_replace(.,"^V",""))    ## remove the prefix of colnames
+
+
+m1 <-data.frame(from =rownames(m1)[row(m1)[upper.tri(m1)]], 
+                to =colnames(m1)[col(m1)[upper.tri(m1)]], 
+                corr=m1[upper.tri(m1)])            ## convert partial correlation matrix to column
+
+edges <- m1[m1$corr != 0, ]      ## only keep those rows that corr != 0
+
+
+edges <- edges %>%  
+  mutate(from = as.numeric(from), to = as.numeric(to))   ##convert the type to be consistant with "nodes"
+
+edges_for_plot <- edges %>%
+  inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  rename(x = lon, y = lat) %>%
+  inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  rename(xend = lon, yend = lat)           ## define the start(from(x,y)) and end(to(xend,yend)) point for each edges
+
+```
+
+```{r GLASSO_Map_Plot3, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## plot of GLASSO
+##################################
+## transform nodes and edges
+nodes_ordered <- nodes[, c(2, 3, 4, 5, 1)]
+#nodes_transformed <- usmap_transform(nodes_ordered)
+nodes_transformed <- usmap_transform(nodes_ordered, input_names = c("lon", "lat"), output_names = c("lon.1", "lat.1"))
+
+
+edges_for_plot_ordered <- edges_for_plot[, c(4, 5, 6, 7, 1, 2, 3)]
+edges_for_plot_transformed <- usmap_transform(edges_for_plot_ordered, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
+edges_for_plot_transformed_ordered <- edges_for_plot_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
+edges_for_plot_transformed2 <- usmap_transform(edges_for_plot_transformed_ordered, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  ggrepel::geom_label_repel(data = nodes_transformed,
+                            aes(x = lon.1, y = lat.1, label = County1),
+                            size = 3, alpha = 0.8,
+                            label.r = unit(0.5, "lines"), label.size = 0.5,
+                            # segment.color = "red", segment.size = 1,
+                            seed = 1002) +
+  geom_segment(data = edges_for_plot_transformed2, 
+               aes(x = x.1, xend = xend.1,
+                   y = y.1, yend = yend.1),
+               color = "blue", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = lon.1, y = lat.1),
+             fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Geospatial Network of GLASSO",
+       subtitle = "The Edges Estimated from GLASSO and US Map",
+       size = "Magnitude") +
+  theme(legend.position = "right", plot.margin = unit(c(0.25,0,0,0), "cm"))
+#top, right, bottom, left
+```
+
+# Motivtaing Plots {.tabset}
+
+## Geodist (A1)
+
+```{r Theta_vs_A1, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+A1 <- as.matrix(geodist1)
+A1 <- 1/log(A1) 
+A1 <- standardise_network_matrix_tri(A1)
+diag(A1) <- 0
+
+```
+
+## GLASSO vs A1
+
+```{r GLASSO_vs_A1_1, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+A1_plot <- A1[upper.tri(A1)]
+
+partial_corr_GLASSO <- - Rho_hat_GLASSO[upper.tri(Rho_hat_GLASSO)]
+
+plot(x = A1_plot, y = partial_corr_GLASSO, xlab = "Geographical Distance Network", ylab ="Partial Correlation (GLASSO)")
+
+```
+
+```{r GLASSO_vs_A1_2, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## Binning the network - 
+num_bins <- 10
+
+# Quantile bins - Equi-obs bins
+df_A1_plot <- data.frame(A1_plot)
+
+df_A1_plot <- df_A1_plot %>% mutate(A1_plot_bin = cut(A1_plot, 
+                                                      breaks = unique(quantile(A1_plot, probs=seq.int(0,1, by=1/num_bins))), 
+                                                      include.lowest=TRUE))
+df_A1_plot <- df_A1_plot %>% mutate(A1_plot_bin_cat = ntile(A1_plot, num_bins))
+df_A1_plot <- df_A1_plot %>% mutate(partial_corr_GLASSO = partial_corr_GLASSO)
+
+plot(aggregate(df_A1_plot$A1_plot, list(df_A1_plot$A1_plot_bin_cat), mean)$x, log(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin_cat), mean)$x), xlab = "A1 - bin mid-point", ylab = "log E[rho_ij^2 | A1 binned]", main = "Quantile (Equi-obs) bins")
+
+df_plot <- data.frame(A1_bin_mean = aggregate(df_A1_plot$A1_plot, list(df_A1_plot$A1_plot_bin_cat), mean)$x, 
+                      Mean_r_ij2 = aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin_cat), mean)$x, 
+                      SE_r_ij2 = sqrt(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin_cat), var)$x)/sqrt(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin_cat), length)$x))
+
+plot1 <- ggplot(df_plot, aes(x=A1_bin_mean, y=log(Mean_r_ij2))) + 
+  geom_pointrange(aes(ymin = log(Mean_r_ij2 - SE_r_ij2), ymax = log(Mean_r_ij2 + SE_r_ij2)), position=position_dodge(0.05)) +
+  ggtitle("Quantile (Equi-obs) bins") + 
+  labs(y = "log E[rho_ij^2 | A1 binned]", x = "A1 - bin mid-point")
+print(plot1)
+
+# Equi-width bins
+df_A1_plot <- data.frame(A1_plot)
+Equi_bins_breaks <- seq(min(A1_plot), max(A1_plot), length.out = num_bins + 1)
+A1_plot_bin_mid = (Equi_bins_breaks[1:num_bins] + Equi_bins_breaks[2:(num_bins + 1)])/2
+
+df_A1_plot <- df_A1_plot %>% mutate(A1_plot_bin = cut(A1_plot, 
+                                                      breaks = Equi_bins_breaks, 
+                                                      include.lowest=TRUE))
+df_A1_plot <- df_A1_plot %>% mutate(partial_corr_GLASSO = partial_corr_GLASSO)
+
+
+plot(A1_plot_bin_mid, log(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin), mean)$x), xlab = "A1 - bin mid-point", ylab = "log E[rho_ij^2 | A1 binned]", main = "Equi-spaced bins")
+
+
+df_plot <- data.frame(A1_bin_mean = A1_plot_bin_mid, 
+                      Mean_r_ij2 = aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin), mean)$x, 
+                      SE_r_ij2 = sqrt(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin), var)$x)/sqrt(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin), length)$x))
+
+
+plot1 <- ggplot(df_plot, aes(x=A1_bin_mean, y=log(Mean_r_ij2))) + 
+  geom_pointrange(aes(ymin = log(Mean_r_ij2 - SE_r_ij2), ymax = log(Mean_r_ij2 + SE_r_ij2)), position=position_dodge(0.05)) +
+  ggtitle("Equi-spaced bins") + 
+  labs(y = "log E[rho_ij^2 | A1 binned]", x = "A1 - bin mid-point")
+print(plot1)
+
+```
+
+## Facebook (A2)
+
+```{r Theta_vs_A2, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+A2 <- as.matrix(SCI_index1)
+A2 <- log(A2)
+A2 <- standardise_network_matrix_tri(A2)
+diag(A2) <- 0
+
+
+```
+
+## GLASSO vs A2
+
+```{r GLASSO_vs_A2_1, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+A2_plot <- A2[upper.tri(A2)]
+
+partial_corr_GLASSO <- - Rho_hat_GLASSO[upper.tri(Rho_hat_GLASSO)]
+
+#DAVID. USING LOESS INSTEAD OF LOWESS. IT FITS THE DATA BETTER
+plot(x = A2_plot, y = partial_corr_GLASSO, xlab = "Facebook Connectivity Index", ylab ="Partial Correlation (GLASSO)")
+
+cor(as.vector(A1_plot), as.vector(A2_plot))
+```
+
+
+```{r GLASSO_vs_A2_2, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## Binning the network - 
+
+num_bins <- 10
+
+# Quantile bins - Equi-obs bins
+df_A2_plot <- data.frame(A2_plot)
+
+df_A2_plot <- df_A2_plot %>% mutate(A2_plot_bin = cut(A2_plot, 
+                                                      breaks = unique(quantile(A2_plot, probs=seq.int(0,1, by=1/num_bins))), 
+                                                      include.lowest=TRUE))
+df_A2_plot <- df_A2_plot %>% mutate(A2_plot_bin_cat = ntile(A2_plot, num_bins))
+df_A2_plot <- df_A2_plot %>% mutate(partial_corr_GLASSO = partial_corr_GLASSO)
+
+plot(aggregate(df_A2_plot$A2_plot, list(df_A2_plot$A2_plot_bin_cat), mean)$x, log(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin_cat), mean)$x), xlab = "A2 - bin mid-point", ylab = "log E[rho_ij^2 | A2 binned]", main = "Quantile (Equi-obs) bins")
+
+df_plot <- data.frame(A2_bin_mean = aggregate(df_A2_plot$A2_plot, list(df_A2_plot$A2_plot_bin_cat), mean)$x, 
+                      Mean_r_ij2 = aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin_cat), mean)$x, 
+                      SE_r_ij2 = sqrt(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin_cat), var)$x)/sqrt(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin_cat), length)$x))
+
+plot1 <- ggplot(df_plot, aes(x=A2_bin_mean, y=log(Mean_r_ij2))) + 
+  geom_pointrange(aes(ymin = log(Mean_r_ij2 - SE_r_ij2), ymax = log(Mean_r_ij2 + SE_r_ij2)), position=position_dodge(0.05)) +
+  ggtitle("Quantile (Equi-obs) bins") + 
+  labs(y = "log E[rho_ij^2 | A2 binned]", x = "A2 - bin mid-point")
+print(plot1)
+
+# Equi-width bins
+df_A2_plot <- data.frame(A2_plot)
+Equi_bins_breaks <- seq(min(A2_plot), max(A2_plot), length.out = num_bins + 1)
+A2_plot_bin_mid = (Equi_bins_breaks[1:num_bins] + Equi_bins_breaks[2:(num_bins + 1)])/2
+
+df_A2_plot <- df_A2_plot %>% mutate(A2_plot_bin = cut(A2_plot, 
+                                                      breaks = Equi_bins_breaks, 
+                                                      include.lowest=TRUE))
+df_A2_plot <- df_A2_plot %>% mutate(partial_corr_GLASSO = partial_corr_GLASSO)
+
+
+plot(A2_plot_bin_mid, log(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin), mean)$x), xlab = "A2 - bin mid-point", ylab = "log E[r_ij^2 | A2 binned]", main = "Equi-spaced bins")
+
+
+df_plot <- data.frame(A2_bin_mean = A2_plot_bin_mid, 
+                      Mean_r_ij2 = aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin), mean)$x, 
+                      SE_r_ij2 = sqrt(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin), var)$x)/sqrt(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin), length)$x))
+
+
+plot1 <- ggplot(df_plot, aes(x=A2_bin_mean, y=log(Mean_r_ij2))) + 
+  geom_pointrange(aes(ymin = log(Mean_r_ij2 - SE_r_ij2), ymax = log(Mean_r_ij2 + SE_r_ij2)), position=position_dodge(0.05)) +
+  ggtitle("Equi-spaced bins") + 
+  labs(y = "log E[rho_ij^2 | A2 binned]", x = "A2 - bin mid-point")
+print(plot1)
+
+```
+
+# GOLAZO - Geodist (A1) {.tabset}
+
+## Inference
+
+```{r GOLAZO_A1, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta_GOLAZO_A1_full <- matrix(NA, nrow = N, ncol = 2)
+
+beta0_grid_length <- 20
+#beta0_grid_max <- 2
+#beta0_grid_min <- -5
+beta0_grid_max <- 0.5
+beta0_grid_min <- -1
+
+beta0_grid <- seq(beta0_grid_min, beta0_grid_max, length.out = beta0_grid_length)
+
+
+beta1_grid_length <- 20
+#beta1_grid_max <- 2
+#beta1_grid_min <- -5
+beta1_grid_max <- -0.5
+beta1_grid_min <- -2
+
+beta1_grid <- seq(beta1_grid_min, beta1_grid_max, length.out = beta1_grid_length)
+
+ebic_eval_optim_GOLAZO_A1_full <- rep(NA, N)
+
+time_GOLAZO_A1_freq.start <- Sys.time()
+for(j in 1:N){
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(covid1)) 
+  
+  beta_optimise <- matrix(NA, nrow = beta0_grid_length, ncol = beta1_grid_length)
+  for(b0 in 1:beta0_grid_length){
+    for(b1 in 1:beta1_grid_length){
+      #cat("b0 = ", b0, ", b1 = ", b1, "\n")
+      try(beta_optimise[b0, b1] <- ebic_eval_network(n, R, A1, beta0 = beta0_grid[b0], beta1 = beta1_grid[b1], ebic.gamma, edge.tol), silent = TRUE)
+    }
+    cat("b0 = ", b0, "DONE", "\n")
+  }
+  
+  min_coord <- which(beta_optimise== min(beta_optimise, na.rm = TRUE), arr.ind = TRUE)
+  
+  beta_GOLAZO_A1_full[j, 1] <- beta0_grid[min_coord[1]]
+  beta_GOLAZO_A1_full[j, 2] <- beta1_grid[min_coord[2]]
+
+  ebic_eval_optim_GOLAZO_A1_full[j] <- min(beta_optimise, na.rm = TRUE)
+  
+  # U <- exp(beta0 + beta1*A1) 
+  U <- exp(beta_GOLAZO_A1_full[j,1] + beta_GOLAZO_A1_full[j,2]*A1) 
+  
+  ###################################
+  # we are now ready to run GOLAZO and output the optimal K
+  diag(U) <- 0
+  
+  res <- golazo(R, -U, U, tol = 1e-7, verbose=FALSE)
+  Rho_hat_GOLAZO_A1_full <- threshold(cov2cor(res$K), edge.tol)
+}
+time_GOLAZO_A1_freq.end <- Sys.time()
+```
+
+## Analysis
+
+```{r GOLAZO_A1_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+beta_GOLAZO_A1_full
+
+ebic_eval_optim_GOLAZO_A1_full
+
+sum(Rho_hat_GOLAZO_A1_full[lower.tri((Rho_hat_GOLAZO_A1_full))] != 0) # 1813 # 596 #540 
+sum(Rho_hat_GOLAZO_A1_full[lower.tri((Rho_hat_GOLAZO_A1_full))] == 0) # 3038 # 4255 # 4311
+
+## ploting the EBIC in beta0 and beta1
+library(graphics)
+contour(beta0_grid, beta1_grid, beta_optimise, xlab = "beta0", ylab = "beta1")
+points(beta_GOLAZO_A1_full[1], beta_GOLAZO_A1_full[2], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+time_GOLAZO_A1_freq1 <- time_GOLAZO_A1_freq.end - time_GOLAZO_A1_freq.start
+time_GOLAZO_A1_freq <- round(time_GOLAZO_A1_freq1/N, 3)
+time_GOLAZO_A1_freq
+
+```
+
+## Map Plots
+
+```{r GOLAZO_A1_Map_Plot2, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+write.csv(- Rho_hat_GOLAZO_A1_full , file = paste("mRho_hat_GOLAZO_A1_full", ".csv", sep = ""))
+
+# ## edges connection for GLASSO
+#par_corr_GOLAZO_A1_full <- - Rho_hat_GOLAZO_A1_full  ## for some reason this doesn;t work 
+par_corr_GOLAZO_A1 <- read_csv("mRho_hat_GOLAZO_A1_full.csv")[, 2:100] 
+mydf_A1 <- par_corr_GOLAZO_A1
+
+mydf_A1 <- mydf_A1 %>% 
+  rename_all(~stringr::str_replace(.,"^V",""))    ## remove the prefix of colnames
+
+
+mydf_A1 <-data.frame(from =rownames(mydf_A1)[row(mydf_A1)[upper.tri(mydf_A1)]], 
+                to =colnames(mydf_A1)[col(mydf_A1)[upper.tri(mydf_A1)]], 
+                corr=mydf_A1[upper.tri(mydf_A1)])            ## convert partial correlation matrix to column
+
+edges_A1 <- mydf_A1[mydf_A1$corr != 0, ]      ## only keep those rows that corr != 0
+
+
+edges_A1 <- edges_A1 %>%  
+  mutate(from = as.numeric(from), to = as.numeric(to))   ##convert the type to be consistant with "nodes"
+
+edges_for_plot_A1 <- edges_A1 %>%
+  inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  rename(x = lon, y = lat) %>%
+  inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  rename(xend = lon, yend = lat)           ## define the start(from(x,y)) and end(to(xend,yend)) point for each edges
+
+```
+
+```{r GOLAZO_A1_Map_Plot3, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## plot of GOLAZO_A1
+##################################
+## transform nodes and edges
+nodes_ordered <- nodes[, c(2, 3, 4, 5, 1)]
+#nodes_transformed <- usmap_transform(nodes_ordered)
+nodes_transformed <- usmap_transform(nodes_ordered, input_names = c("lon", "lat"), output_names = c("lon.1", "lat.1"))
+
+
+edges_for_plot_A1_ordered <- edges_for_plot_A1[, c(4, 5, 6, 7, 1, 2, 3)]
+edges_for_plot_A1_transformed <- usmap_transform(edges_for_plot_A1_ordered, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
+edges_for_plot_A1_transformed_ordered <- edges_for_plot_A1_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
+edges_for_plot_A1_transformed2 <- usmap_transform(edges_for_plot_A1_transformed_ordered, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  ggrepel::geom_label_repel(data = nodes_transformed,
+                            aes(x = lon.1, y = lat.1, label = County1),
+                            size = 3, alpha = 0.8,
+                            label.r = unit(0.5, "lines"), label.size = 0.5,
+                            # segment.color = "red", segment.size = 1,
+                            seed = 1002) +
+  geom_segment(data = edges_for_plot_A1_transformed2, 
+               aes(x = x.1, xend = xend.1,
+                   y = y.1, yend = yend.1),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = lon.1, y = lat.1),
+             fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Geospatial Network of GOLAZO - A1",
+       subtitle = "The Edges Estimated from GOLAZO - A1 and US Map",
+       size = "Magnitude") +
+  theme(legend.position = "right")
+
+```
+
+
+### Unique edges A1 (and not GLASSO)
+
+```{r GOLAZO_unique_A1_Map_Plot2, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+edges_check <- dplyr::select(edges, -corr)
+edges_A1_check <- dplyr::select(edges_A1, -corr)
+
+
+unique_A1 <- dplyr::setdiff(edges_A1_check, edges_check)   ## unique for edges_A1_check
+
+both <- intersect(edges_A1_check, edges_check)  ## in both dataframe
+
+## merge with edges
+unique_A1_edges <- merge(unique_A1, edges_A1, by = c("from", "to"))
+unique_A1_edges <- arrange(unique_A1_edges, from, to) 
+
+
+unique_A1_edges_for_plot <- unique_A1_edges %>%
+  inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  rename(x = lon, y = lat) %>%
+  inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  rename(xend = lon, yend = lat)           ## generate the coordinate for "from" and "to" counties respectively
+
+```
+
+```{r GOLAZO_unique_A1_Map_Plot3, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+unique_A1_edges_for_plot <- unique_A1_edges_for_plot[, c(4, 5, 6, 7, 1, 2, 3)]
+unique_A1_transformed <- usmap_transform(unique_A1_edges_for_plot, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
+unique_A1_transformed <- unique_A1_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
+unique_A1_transformed <- usmap_transform(unique_A1_transformed, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+
+## connections unique in A1
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  ggrepel::geom_label_repel(data = nodes_transformed,
+                            aes(x = lon.1, y = lat.1, label = County1),
+                            size = 3, alpha = 0.8,
+                            label.r = unit(0.5, "lines"), label.size = 0.5
+                            , seed = 1002) +
+  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
+             shape = 16, color = 'orangered3',
+             stroke = 1) +
+  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
+             shape = 16, color = 'orangered3',
+             stroke = 1) +
+  geom_segment(data = unique_A1_transformed, 
+               aes(x = x.1, xend = xend.1,
+                   y = y.1, yend = yend.1),
+               color = "red",size = 0.35, alpha = 0.5) +
+  labs(title = "Edges Unique in GOLAZO-A1",
+       # subtitle = "Lines: red for GOLAZO_A1",
+       size = "Magnitude") +
+  theme(legend.position = "right")
+
+
+```
+
+
+
+# GOLAZO - Facebook (A2) {.tabset}
+
+## Inference
+
+```{r GOLAZO_A2, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta_GOLAZO_A2_full <- matrix(NA, nrow = N, ncol = 2)
+
+beta0_grid_length <- 20
+#beta0_grid_max <- 2
+#beta0_grid_min <- -5
+beta0_grid_max <- 0.5
+beta0_grid_min <- -1
+
+beta0_grid <- seq(beta0_grid_min, beta0_grid_max, length.out = beta0_grid_length)
+
+beta2_grid_length <- 20
+#beta2_grid_max <- 2
+#beta2_grid_min <- -5
+beta2_grid_max <- -0.5
+beta2_grid_min <- -2
+
+beta2_grid <- seq(beta2_grid_min, beta2_grid_max, length.out = beta2_grid_length)
+
+
+ebic_eval_optim_GOLAZO_A2_full <- rep(NA, N)
+
+time_GOLAZO_A2_freq.start <- Sys.time()
+for(j in 1:N){
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(covid1)) 
+  
+  beta_optimise <- matrix(NA, nrow = beta0_grid_length, ncol = beta2_grid_length)
+  for(b0 in 1:beta0_grid_length){
+    for(b1 in 1:beta2_grid_length){
+      #cat("b0 = ", b0, ", b1 = ", b1, "\n")
+      try(beta_optimise[b0, b1] <- ebic_eval_network(n, R, A2, beta0 = beta0_grid[b0], beta1 = beta2_grid[b1], ebic.gamma, edge.tol), silent = TRUE)
+    }
+    cat("b0 = ", b0, "DONE", "\n")
+  }
+  
+  min_coord <- which(beta_optimise== min(beta_optimise, na.rm = TRUE), arr.ind = TRUE)
+  
+  beta_GOLAZO_A2_full[j, 1] <- beta0_grid[min_coord[1]]
+  beta_GOLAZO_A2_full[j, 2] <- beta2_grid[min_coord[2]]
+
+  ebic_eval_optim_GOLAZO_A2_full[j] <- min(beta_optimise, na.rm = TRUE)
+  
+  # U <- exp(beta0 + beta2*A2) 
+  U <- exp(beta_GOLAZO_A2_full[j,1] + beta_GOLAZO_A2_full[j,2]*A2) 
+  
+  ###################################
+  # we are now ready to run GOLAZO and output the optimal K
+  diag(U) <- 0
+  
+  res <- golazo(R, -U, U, tol = 1e-7, verbose=FALSE)
+  Rho_hat_GOLAZO_A2_full <- threshold(cov2cor(res$K), edge.tol)
+}
+time_GOLAZO_A2_freq.end <- Sys.time()
+
+```
+
+## Analysis
+
+```{r GOLAZO_A2_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+beta_GOLAZO_A2_full
+
+ebic_eval_optim_GOLAZO_A2_full
+
+sum(Rho_hat_GOLAZO_A2_full[lower.tri((Rho_hat_GOLAZO_A2_full))] != 0) # 1813 # 596 #540 
+sum(Rho_hat_GOLAZO_A2_full[lower.tri((Rho_hat_GOLAZO_A2_full))] == 0) # 3038 # 4255 # 4311
+
+## ploting the EBIC in beta0 and beta2
+contour(beta0_grid, beta2_grid, beta_optimise, xlab = "beta0", ylab = "beta2")
+points(beta_GOLAZO_A2_full[1], beta_GOLAZO_A2_full[2], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+### Plotting the fitted partial correlations against the network
+
+A2_plot <- A2[upper.tri(A2)]
+
+partial_corr_GOLAZO_A2_full  <- - Rho_hat_GOLAZO_A2_full[upper.tri(Rho_hat_GOLAZO_A2_full)]
+
+none_na_plot <- which(log(partial_corr_GOLAZO_A2_full^2)!=-Inf)
+
+plot(x = A2_plot[none_na_plot], y = log(partial_corr_GOLAZO_A2_full^2)[none_na_plot], xlab = "log(Facebook Connection)", ylab ="log(r^2)", main = "GOLAZO A2 estimated")
+l <- loess(log(partial_corr_GOLAZO_A2_full^2)[none_na_plot] ~ A2_plot[none_na_plot])
+o <- order(l$x)
+lines(l$x[o], l$fitted[o], col='red')
+
+time_GOLAZO_A2_freq1 <- time_GOLAZO_A2_freq.end - time_GOLAZO_A2_freq.start
+time_GOLAZO_A2_freq <- round(time_GOLAZO_A2_freq1/N, 3)
+time_GOLAZO_A2_freq
+
+```
+
+
+## Map Plots
+
+```{r GOLAZO_A2_Map_Plot2, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+write.csv(- Rho_hat_GOLAZO_A2_full , file = paste("mRho_hat_GOLAZO_A2_full", ".csv", sep = ""))
+
+# ## edges connection for GLASSO
+#par_corr_GOLAZO_A2_full <- - Rho_hat_GOLAZO_A2_full  ## for some reason this doesn;t work 
+par_corr_GOLAZO_A2 <- read_csv("mRho_hat_GOLAZO_A2_full.csv")[, 2:100] 
+mydf_A2 <- par_corr_GOLAZO_A2
+
+mydf_A2 <- mydf_A2 %>% 
+  rename_all(~stringr::str_replace(.,"^V",""))    ## remove the prefix of colnames
+
+
+mydf_A2 <-data.frame(from =rownames(mydf_A2)[row(mydf_A2)[upper.tri(mydf_A2)]], 
+                to =colnames(mydf_A2)[col(mydf_A2)[upper.tri(mydf_A2)]], 
+                corr=mydf_A2[upper.tri(mydf_A2)])            ## convert partial correlation matrix to column
+
+edges_A2 <- mydf_A2[mydf_A2$corr != 0, ]      ## only keep those rows that corr != 0
+
+
+edges_A2 <- edges_A2 %>%  
+  mutate(from = as.numeric(from), to = as.numeric(to))   ##convert the type to be consistant with "nodes"
+
+edges_for_plot_A2 <- edges_A2 %>%
+  inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  rename(x = lon, y = lat) %>%
+  inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  rename(xend = lon, yend = lat)           ## define the start(from(x,y)) and end(to(xend,yend)) point for each edges
+
+```
+
+```{r GOLAZO_A2_Map_Plot3, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## plot of GOLAZO_A2
+##################################
+## transform nodes and edges
+nodes_ordered <- nodes[, c(2, 3, 4, 5, 1)]
+#nodes_transformed <- usmap_transform(nodes_ordered)
+nodes_transformed <- usmap_transform(nodes_ordered, input_names = c("lon", "lat"), output_names = c("lon.1", "lat.1"))
+
+
+edges_for_plot_A2_ordered <- edges_for_plot_A2[, c(4, 5, 6, 7, 1, 2, 3)]
+edges_for_plot_A2_transformed <- usmap_transform(edges_for_plot_A2_ordered, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
+edges_for_plot_A2_transformed_ordered <- edges_for_plot_A2_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
+edges_for_plot_A2_transformed2 <- usmap_transform(edges_for_plot_A2_transformed_ordered, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  ggrepel::geom_label_repel(data = nodes_transformed,
+                            aes(x = lon.1, y = lat.1, label = County1),
+                            size = 3, alpha = 0.8,
+                            label.r = unit(0.5, "lines"), label.size = 0.5,
+                            # segment.color = "red", segment.size = 1,
+                            seed = 1002) +
+  geom_segment(data = edges_for_plot_A2_transformed2, 
+               aes(x = x.1, xend = xend.1,
+                   y = y.1, yend = yend.1),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = lon.1, y = lat.1),
+             fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Geospatial Network of GOLAZO - A2",
+       subtitle = "The Edges Estimated from GOLAZO - A2 and US Map",
+       size = "Magnitude") +
+  theme(legend.position = "right")
+
+```
+
+
+### Unique edges A2 (and not GLASSO)
+
+```{r GOLAZO_unique_A2_Map_Plot2, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+edges_check <- dplyr::select(edges, -corr)
+edges_A2_check <- dplyr::select(edges_A2, -corr)
+
+
+unique_A2 <- dplyr::setdiff(edges_A2_check, edges_check)   ## unique for edges_A2_check
+
+both <- intersect(edges_A2_check, edges_check)  ## in both dataframe
+
+## merge with edges
+unique_A2_edges <- merge(unique_A2, edges_A2, by = c("from", "to"))
+unique_A2_edges <- arrange(unique_A2_edges, from, to) 
+
+
+unique_A2_edges_for_plot <- unique_A2_edges %>%
+  inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  rename(x = lon, y = lat) %>%
+  inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  rename(xend = lon, yend = lat)           ## generate the coordinate for "from" and "to" counties respectively
+
+```
+
+```{r GOLAZO_unique_A2_Map_Plot3, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+unique_A2_edges_for_plot <- unique_A2_edges_for_plot[, c(4, 5, 6, 7, 1, 2, 3)]
+unique_A2_transformed <- usmap_transform(unique_A2_edges_for_plot, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
+unique_A2_transformed <- unique_A2_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
+unique_A2_transformed <- usmap_transform(unique_A2_transformed, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+
+## connections unique in A2
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  ggrepel::geom_label_repel(data = nodes_transformed,
+                            aes(x = lon.1, y = lat.1, label = County1),
+                            size = 3, alpha = 0.8,
+                            label.r = unit(0.5, "lines"), label.size = 0.5
+                            , seed = 1002) +
+  geom_point(data = unique_A2_transformed, aes(x = x.1, y = y.1),    
+             shape = 16, color = 'orangered3',
+             stroke = 1) +
+  geom_point(data = unique_A2_transformed, aes(x = xend.1, y = yend.1),    
+             shape = 16, color = 'orangered3',
+             stroke = 1) +
+  geom_segment(data = unique_A2_transformed, 
+               aes(x = x.1, xend = xend.1,
+                   y = y.1, yend = yend.1),
+               color = "blue",size = 0.35, alpha = 0.5) +
+  labs(title = "Edges Unique in GOLAZO-A2",
+       # subtitle = "Lines: red for GOLAZO_A2",
+       size = "Magnitude") +
+  theme(legend.position = "right")
+
+
+```
+
+
+
+
+# GOLAZO - Geodist & Facebook (A1 & A2) {.tabset}
+
+## Inference
+
+```{r GOLAZO_A1A2, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+
+beta_GOLAZO_A1A2_full <- matrix(NA, nrow = N, ncol = 3)
+
+beta0_grid_length <- 10
+beta0_grid_max <- 0.5
+beta0_grid_min <- -0.5
+
+beta0_grid <- seq(beta0_grid_min, beta0_grid_max, length.out = beta0_grid_length)
+
+beta1_grid_length <- 10
+beta1_grid_max <- 0
+beta1_grid_min <- -1.5
+
+beta1_grid <- seq(beta1_grid_min, beta1_grid_max, length.out = beta1_grid_length)
+
+
+beta2_grid_length <- 10
+beta2_grid_max <- 0
+beta2_grid_min <- -1.5
+
+ebic_eval_optim_GOLAZO_A1A2_full <- rep(NA, N)
+
+time_GOLAZO_A1A2_freq.start <- Sys.time()
+for(j in 1:N){
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(covid1)) 
+  
+  beta_optimise <- array(NA, dim = c(beta0_grid_length, beta1_grid_length, beta2_grid_length))
+  for(b0 in 1:beta0_grid_length)
+    for(b1 in 1:beta1_grid_length){
+      for(b2 in 1:beta2_grid_length){
+        #cat("b0 = ", b0, ", b1 = ", b1, ", b2 = ", b2, "\n")
+        try(beta_optimise[b0, b1, b2] <- ebic_eval_two_networks(n, R, A1, A2, beta0 = beta0_grid[b0], beta1 = beta1_grid[b1], beta2 = beta2_grid[b2], ebic.gamma, edge.tol), silent = TRUE)
+      }
+      cat("b0 = ", b0, ", b1 = ", b1, "DONE", "\n")
+    }
+  
+  min_coord <- which(beta_optimise== min(beta_optimise, na.rm = TRUE), arr.ind = TRUE)
+  
+  beta_GOLAZO_A1A2_full[j, 1] <- beta0_grid[min_coord[1]]
+  beta_GOLAZO_A1A2_full[j, 2] <- beta1_grid[min_coord[2]]
+  beta_GOLAZO_A1A2_full[j, 3] <- beta2_grid[min_coord[3]]
+
+  ebic_eval_optim_GOLAZO_A1A2_full[j] <- min(beta_optimise, na.rm = TRUE)
+  
+  # U <- exp(beta0 + beta1*A1 + beta2*A2) 
+  U <- exp(beta_GOLAZO_A1A2_full[j,1] + beta_GOLAZO_A1A2_full[j,2]*A1 + beta_GOLAZO_A1A2_full[j,3]*A2) 
+  
+  ###################################
+  # we are now ready to run GOLAZO and output the optimal K
+  diag(U) <- 0
+  
+  res <- golazo(R, -U, U, tol = 1e-7, verbose=FALSE)
+  
+  #Theta_hat_GOLAZO_A1A2_full <- round(res$K, round.tol) 
+  Rho_hat_GOLAZO_A1A2_full <- threshold(cov2cor(res$K), edge.tol)
+}
+time_GOLAZO_A1A2_freq.end <- Sys.time()
+
+```
+
+## Analysis
+
+```{r GOLAZO_A1A2_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+beta_GOLAZO_A1A2_full
+
+ebic_eval_optim_GOLAZO_A1A2_full
+
+sum(Rho_hat_GOLAZO_A1A2_full[lower.tri((Rho_hat_GOLAZO_A1A2_full))] != 0)
+sum(Rho_hat_GOLAZO_A1A2_full[lower.tri((Rho_hat_GOLAZO_A1A2_full))] == 0)
+
+## becuase i repeated 0 by accident
+beta_optimise_plot <- beta_optimise
+
+## ploting the EBIC in Bivariate Marginals - need to marginalise
+contour(beta1_grid, beta2_grid, apply(beta_optimise_plot, MARGIN = c(2, 3), FUN = function(x){mean(x, na.rm = TRUE)}), xlab = "beta1", ylab = "beta2")
+points(beta_GOLAZO_A1A2_full[2], beta_GOLAZO_A1A2_full[3], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+contour(beta0_grid, beta1_grid, apply(beta_optimise_plot, MARGIN = c(1, 2), FUN = function(x){mean(x, na.rm = TRUE)}), xlab = "beta0", ylab = "beta1")
+points(beta_GOLAZO_A1A2_full[1], beta_GOLAZO_A1A2_full[2], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+contour(beta0_grid, beta2_grid, apply(beta_optimise_plot, MARGIN = c(1, 3), FUN = function(x){mean(x, na.rm = TRUE)}), xlab = "beta0", ylab = "beta2")
+points(beta_GOLAZO_A1A2_full[1], beta_GOLAZO_A1A2_full[3], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+## fixing the missing at it's optimum
+## ploting the EBIC in Bivariate Marginals - need to marginalise
+contour(beta1_grid, beta2_grid, beta_optimise_plot[min_coord[1],,], xlab = "beta1", ylab = "beta2", main = "beta0 = hat_beta0")
+points(beta_GOLAZO_A1A2_full[2], beta_GOLAZO_A1A2_full[3], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+contour(beta0_grid, beta1_grid, beta_optimise_plot[,,min_coord[3]], xlab = "beta0", ylab = "beta1", main = "beta2 = hat_beta2")
+points(beta_GOLAZO_A1A2_full[1], beta_GOLAZO_A1A2_full[2], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+contour(beta0_grid, beta2_grid, beta_optimise_plot[,min_coord[2],], xlab = "beta0", ylab = "beta2", main = "beta1 = hat_beta1")
+points(beta_GOLAZO_A1A2_full[1], beta_GOLAZO_A1A2_full[3], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+## Close to the minimum 
+
+n_close <- 10
+beta_close <- matrix(NA, nrow = n_close, ncol = 3)
+for(k in 1:n_close){
+  min_close_coord <- which(beta_optimise == (sort(beta_optimise)[k]), arr.ind = TRUE)
+  
+  beta_close[k, 1] <- beta0_grid[min_close_coord[1]]
+  beta_close[k, 2] <- beta1_grid[min_close_coord[2]]
+  beta_close[k, 3] <- beta2_grid[min_close_coord[3]]
+}
+
+beta_close
+sort(beta_optimise)[1:n_close]
+
+time_GOLAZO_A1A2_freq1 <- time_GOLAZO_A1A2_freq.end - time_GOLAZO_A1A2_freq.start
+time_GOLAZO_A1A2_freq <- round(time_GOLAZO_A1A2_freq1/N, 3)
+time_GOLAZO_A1A2_freq
+
+```
+
+## Map Plots
+
+```{r GOLAZO_A1A2_Map_Plot2, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+write.csv(- Rho_hat_GOLAZO_A1A2_full , file = paste("mRho_hat_GOLAZO_A1A2_full", ".csv", sep = ""))
+
+# ## edges connection for GLASSO
+#par_corr_GOLAZO_A1A2_full <- - Rho_hat_GOLAZO_A1A2_full  ## for some reason this doesn;t work 
+par_corr_GOLAZO_A1A2 <- read_csv("mRho_hat_GOLAZO_A1A2_full.csv")[, 2:100] 
+mydf_A1A2 <- par_corr_GOLAZO_A1A2
+
+mydf_A1A2 <- mydf_A1A2 %>% 
+  rename_all(~stringr::str_replace(.,"^V",""))    ## remove the prefix of colnames
+
+
+mydf_A1A2 <-data.frame(from =rownames(mydf_A1A2)[row(mydf_A1A2)[upper.tri(mydf_A1A2)]], 
+                to =colnames(mydf_A1A2)[col(mydf_A1A2)[upper.tri(mydf_A1A2)]], 
+                corr=mydf_A1A2[upper.tri(mydf_A1A2)])            ## convert partial correlation matrix to column
+
+edges_A1A2 <- mydf_A1A2[mydf_A1A2$corr != 0, ]      ## only keep those rows that corr != 0
+
+
+edges_A1A2 <- edges_A1A2 %>%  
+  mutate(from = as.numeric(from), to = as.numeric(to))   ##convert the type to be consistant with "nodes"
+
+edges_for_plot_A1A2 <- edges_A1A2 %>%
+  inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  rename(x = lon, y = lat) %>%
+  inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  rename(xend = lon, yend = lat)           ## define the start(from(x,y)) and end(to(xend,yend)) point for each edges
+
+```
+
+```{r GOLAZO_A1A2_Map_Plot3, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## plot of GOLAZO_A1A2
+##################################
+## transform nodes and edges
+nodes_ordered <- nodes[, c(2, 3, 4, 5, 1)]
+#nodes_transformed <- usmap_transform(nodes_ordered)
+nodes_transformed <- usmap_transform(nodes_ordered, input_names = c("lon", "lat"), output_names = c("lon.1", "lat.1"))
+
+
+edges_for_plot_A1A2_ordered <- edges_for_plot_A1A2[, c(4, 5, 6, 7, 1, 2, 3)]
+edges_for_plot_A1A2_transformed <- usmap_transform(edges_for_plot_A1A2_ordered, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
+edges_for_plot_A1A2_transformed_ordered <- edges_for_plot_A1A2_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
+edges_for_plot_A1A2_transformed2 <- usmap_transform(edges_for_plot_A1A2_transformed_ordered, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  ggrepel::geom_label_repel(data = nodes_transformed,
+                            aes(x = lon.1, y = lat.1, label = County1),
+                            size = 3, alpha = 0.8,
+                            label.r = unit(0.5, "lines"), label.size = 0.5,
+                            # segment.color = "red", segment.size = 1,
+                            seed = 1002) +
+  geom_segment(data = edges_for_plot_A1A2_transformed2, 
+               aes(x = x.1, xend = xend.1,
+                   y = y.1, yend = yend.1),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = lon.1, y = lat.1),
+             fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Geospatial Network of GOLAZO - A1 \\& A2",
+       subtitle = "The Edges Estimated from GOLAZO - A1 \\& A2 and US Map",
+       size = "Magnitude") +
+  theme(legend.position = "right")
+
+```
+
+
+### Unique edges A1
+
+```{r GOLAZO_unique_A1A2_Map_Plot2, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+edges_A1_check <- dplyr::select(edges_A1, -corr)
+edges_A2_check <- dplyr::select(edges_A2, -corr)
+
+
+unique_A1 <- dplyr::setdiff(edges_A1_check, edges_A2_check)   ## unique for edges_A1_check
+unique_A2 <- dplyr::setdiff(edges_A2_check, edges_A1_check)   ## unique for edges_A2_check
+
+both <- intersect(edges_A1_check, edges_A2_check)  ## in both dataframe
+
+## merge with edges
+unique_A1_edges <- merge(unique_A1, edges_A1, by = c("from", "to"))
+unique_A1_edges <- arrange(unique_A1_edges, from, to) 
+
+
+unique_A2_edges <- merge(unique_A2, edges_A2, by = c("from", "to"))
+unique_A2_edges <- arrange(unique_A2_edges, from, to) 
+
+
+unique_A1_edges_for_plot <- unique_A1_edges %>%
+  inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  rename(x = lon, y = lat) %>%
+  inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  rename(xend = lon, yend = lat)           ## generate the coordinate for "from" and "to" counties respectively
+
+unique_A2_edges_for_plot <- unique_A2_edges %>%
+  inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  rename(x = lon, y = lat) %>%
+  inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  rename(xend = lon, yend = lat)           ## generate the coordinate for "from" and "to" counties respectively
+
+```
+
+```{r GOLAZO_unique_A1A2_Map_Plot3, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+unique_A1_edges_for_plot <- unique_A1_edges_for_plot[, c(4, 5, 6, 7, 1, 2, 3)]
+unique_A1_transformed <- usmap_transform(unique_A1_edges_for_plot, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
+unique_A1_transformed <- unique_A1_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
+unique_A1_transformed <- usmap_transform(unique_A1_transformed, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+
+unique_A2_edges_for_plot <- unique_A2_edges_for_plot[, c(4, 5, 6, 7, 1, 2, 3)]
+unique_A2_transformed <- usmap_transform(unique_A2_edges_for_plot, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
+unique_A2_transformed <- unique_A2_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
+unique_A2_transformed <- usmap_transform(unique_A2_transformed, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+
+## connections unique in A1
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  ggrepel::geom_label_repel(data = nodes_transformed,
+                            aes(x = lon.1, y = lat.1, label = County1),
+                            size = 3, alpha = 0.8,
+                            label.r = unit(0.5, "lines"), label.size = 0.5
+                            , seed = 1002) +
+  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
+             shape = 16, color = 'orangered3',
+             stroke = 1) +
+  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
+             shape = 16, color = 'orangered3',
+             stroke = 1) +
+  geom_point(data = unique_A2_transformed, aes(x = x.1, y = y.1),  
+             shape = 16, color = 'orangered3',
+             stroke = 1) +
+  geom_point(data = unique_A2_transformed, aes(x = xend.1, y = yend.1),    
+             shape = 16, color = 'orangered3',
+             stroke = 1) +
+  geom_segment(data = unique_A1_transformed, 
+               aes(x = x.1, xend = xend.1,
+                   y = y.1, yend = yend.1),
+               color = "red",size = 0.35, alpha = 0.5) +
+  labs(title = "Edges Unique in GOLAZO-A1",
+       # subtitle = "Lines: red for GOLAZO_A1",
+       size = "Magnitude") +
+  theme(legend.position = "right")
+
+
+## connections unique in A2
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  ggrepel::geom_label_repel(data = nodes_transformed,
+                            aes(x = lon.1, y = lat.1, label = County1),
+                            size = 3, alpha = 0.8,
+                            label.r = unit(0.5, "lines"), label.size = 0.5,
+                            # segment.color = "grey", segment.size = 1,
+                            seed = 1002) +
+  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
+             shape = 16, color = 'orangered3',
+             stroke = 1) +
+  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
+             shape = 16, color = 'orangered3',
+             stroke = 1) +
+  geom_point(data = unique_A2_transformed, aes(x = x.1, y = y.1),  
+             shape = 16, color = 'orangered3',
+             stroke = 1) +
+  geom_point(data = unique_A2_transformed, aes(x = xend.1, y = yend.1),    
+             shape = 16, color = 'orangered3',
+             stroke = 1) +
+  geom_segment(data = unique_A2_transformed, 
+               aes(x = x.1, xend = xend.1,
+                   y = y.1, yend = yend.1),
+               color = "blue",size = 0.35, alpha = 0.5) +
+  labs(title = "Edges Unique in GOLAZO-A2",
+       # subtitle = "Lines: blue for GOLAZO_A2",
+       size = "Magnitude") +
+  theme(legend.position = "right")
+
+
+
+```
+
+
+# Full Comparison {.tabset}
+
+```{r full_comparison, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+ebic_eval_optim_GLASSO
+ebic_eval_optim_GOLAZO_A1_full
+ebic_eval_optim_GOLAZO_A2_full
+ebic_eval_optim_GOLAZO_A1A2_full
+
+beta0_GLASSO
+beta_GOLAZO_A1_full
+beta_GOLAZO_A2_full
+beta_GOLAZO_A1A2_full
+
+
+## BIC adjusted
+ebic_eval_optim_GLASSO
+ebic_eval_optim_GOLAZO_A1_full + (log(n) + 4 * ebic.gamma * log(p))
+ebic_eval_optim_GOLAZO_A2_full + (log(n) + 4 * ebic.gamma * log(p))
+ebic_eval_optim_GOLAZO_A1A2_full + 2*(log(n) + 4 * ebic.gamma * log(p))
+
+options(xtable.floating = FALSE)
+options(xtable.timestamp = "")
+
+table_frame_freq <- data.frame("Method" = c("GLASSO", "GOLAZO - A1", "GOLAZO - A2", "GOLAZO - A1 & A2"), 
+                               "EBIC" = c(ebic_eval_optim_GLASSO, 
+                                          ebic_eval_optim_GOLAZO_A1_full + (log(n) + 4 * ebic.gamma * log(p)),
+                                          ebic_eval_optim_GOLAZO_A2_full + (log(n) + 4 * ebic.gamma * log(p)),
+                                          ebic_eval_optim_GOLAZO_A1A2_full + 2*(log(n) + 4 * ebic.gamma * log(p))),
+                               "hat{beta}_0" = c(beta0_GLASSO, 
+                                                 beta_GOLAZO_A1_full[,1],
+                                                 beta_GOLAZO_A2_full[,1],
+                                                 beta_GOLAZO_A1A2_full[,1]),
+                               "hat{beta}_1" = c(NA, 
+                                                 beta_GOLAZO_A1_full[,2],
+                                                 NA, 
+                                                 beta_GOLAZO_A1A2_full[,2]), 
+                               "hat{beta}_2" = c(NA, 
+                                                 NA, 
+                                                 beta_GOLAZO_A2_full[,2], 
+                                                 beta_GOLAZO_A1A2_full[,3]),
+                               "Edges" = c(
+                            sum(Rho_hat_GLASSO[lower.tri((Rho_hat_GLASSO))] != 0),     
+                            sum(Rho_hat_GOLAZO_A1_full[lower.tri((Rho_hat_GOLAZO_A1_full))] != 0),   
+                            sum(Rho_hat_GOLAZO_A2_full[lower.tri((Rho_hat_GOLAZO_A2_full))] != 0),     
+                            sum(Rho_hat_GOLAZO_A1A2_full[lower.tri((Rho_hat_GOLAZO_A1A2_full))] != 0)),
+                               "Non-Edges" = c(
+                            sum(Rho_hat_GLASSO[lower.tri((Rho_hat_GLASSO))] == 0),     
+                            sum(Rho_hat_GOLAZO_A1_full[lower.tri((Rho_hat_GOLAZO_A1_full))] == 0),    
+                            sum(Rho_hat_GOLAZO_A2_full[lower.tri((Rho_hat_GOLAZO_A2_full))] == 0),     
+                            sum(Rho_hat_GOLAZO_A1A2_full[lower.tri((Rho_hat_GOLAZO_A1A2_full))] == 0))
+                              )
+xtable(table_frame_freq, digits=3)
+
+kable(table_frame_freq)
+
+```
+
+

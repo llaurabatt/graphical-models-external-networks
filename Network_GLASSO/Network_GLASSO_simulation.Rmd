@@ -1,0 +1,721 @@
+---
+title: "Network GLASSO Simulation"
+output: html_notebook
+---
+
+This R Notebook provides a detailed introduction of the simulation for the Network GLASSO models
+
+## working directory
+
+```{r working_directory, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+data_dir <- '/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/paper_code_github/'
+
+```
+
+
+# 1. Load data and define functions
+## 1.1 Load packages  
+
+```{R}
+# install.packages('rjson')
+library(rjson)
+library(devtools)
+#install_github("pzwiernik/golazo", build_vignettes=TRUE)
+library(golazo)
+library(polynom)
+library(ggplot2)
+#source('Network_GLASSO/GOLAZO_function.R')
+
+```
+
+
+## 1.2 Define functions
+
+```{R}
+# This function is used for selecting the optimal hyperparameter in GLASSO
+ebic_eval <- function(n, R, U, ebic.gamma, edge.tol){
+  res <- golazo(R, L = -U, U = U, verbose = FALSE)
+  K <- res$K
+  KR <- stats::cov2cor(K)         #to make edge count independend of scalings
+  nedg <- length(which(abs(KR[upper.tri(abs(KR), diag = FALSE)]) > edge.tol))
+  ebic <- -(n)*(log(det(K)) - sum(R*K)) + nedg * (log(n) + 4 * ebic.gamma * log(p))
+  return(ebic)   
+}
+
+# This function is used for selecting the optimal hyperparameter in GLASSO with networks
+ebic_eval_network <- function(n, R, A, beta0, beta1, ebic.gamma, edge.tol){
+  U <- exp(beta0 + beta1*A)           
+  diag(U) <- 0
+  return(ebic_eval(n, R, U, ebic.gamma, edge.tol))
+}
+
+# This function is used for getting exact 0's in partial correlation (Rho)
+threshold <- function(Rho_mat, threshold){
+  return(Rho_mat*(abs(Rho_mat) >= threshold))
+}
+```
+
+## 1.3 Hyperparameters
+
+```{R}
+ebic.gamma <- 0           # when equals to 0, it's BIC; when equals to 0.5, it's EBIC
+edge.tol   <- 1e-6  
+
+```
+
+## 1.4 Load simulation data generated from Python
+
+```{R}
+
+n_sims <- 50    # repeats of simulation
+p <- 10         # dimension, here we use p = 10/50
+
+data_path <- paste0(data_dir,"Data/Simulations/sim0_p", p, "_n2000.json")   ## correspond to sim0_p10_n2000 dataset
+data <- fromJSON(file=data_path)
+var_names <- paste0('p', seq(1,p))
+
+```
+
+
+## 1.5 Extract information of simulation data and network matrices
+
+```{R}
+# The true inverse covariance matrix
+theta_true<- data.matrix(as.data.frame(data.table::transpose(data['theta_true']$theta_true), col.names = var_names))
+
+# The strongly informative network
+A_semi_dep85<- data.matrix(as.data.frame(data.table::transpose(data['A_semi_dep85']$A_semi_dep85), col.names = var_names))
+A_scaled_semi_dep85<- data.matrix(as.data.frame(data.table::transpose(data['A_scaled_semi_dep85']$A_scaled_semi_dep85), col.names = var_names))
+
+# The mildly informative network
+A_semi_dep<- data.matrix(as.data.frame(data.table::transpose(data['A_semi_dep']$A_semi_dep), col.names = var_names))
+A_scaled_semi_dep<- data.matrix(as.data.frame(data.table::transpose(data['A_scaled_semi_dep']$A_scaled_semi_dep), col.names = var_names))
+
+# The independent network
+A_indep<- data.matrix(as.data.frame(data.table::transpose(data['A_indep']$A_indep), col.names = var_names))
+A_scaled_indep<- data.matrix(as.data.frame(data.table::transpose(data['A_scaled_indep']$A_scaled_indep), col.names = var_names))
+
+
+mu_true<- data.matrix(as.data.frame(t(data['mu_true']$mu_true)))
+names(mu_true) <- var_names
+overall_n <- data['n']$n
+
+```
+
+
+
+## 1.6 Create a list of the extracted Y for each repeats
+
+```{R}
+Y_list <- list()
+
+for (i in seq(0, n_sims-1)){
+  data_path <- paste0(data_dir,"Data/Simulations/sim", i, "_p", p, "_n2000.json")
+  data <- fromJSON(file=data_path)
+  Y_df<- as.data.frame(data.table::transpose(data['Y']$Y), col.names = var_names)
+  Y_list[[i+1]]<-Y_df
+}
+```
+
+
+
+## 1.7 Convert list to array
+```{R}
+N <- n_sims
+
+X_repeats <- list()
+
+for(j in 1: N){ 
+  X_repeats[[j]] <- Y_list[[j]]
+}
+
+X_repeats <- array(unlist(X_repeats),dim=c(2000, p, N))
+str(X_repeats)
+```
+
+
+## 1.8 Define the sample size
+
+```{R}
+  n <- 100        
+# n <- 200
+# n <- 500
+```
+
+
+# 2. GLASSO (no Network) estimation
+
+## 2.1 Basic setting
+
+```{R}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+
+
+Rho_zeros <- cov2cor(theta_true)[lower.tri(cov2cor(theta_true))]   ## be careful, remember -Rho is partial correlation
+Rho_squared_error_freq <- rep(0, N) 
+
+Ps <- rep(0, N)   # all positives in Rho_hat
+Ns <- rep(0, N)   # all negatives in Rho_hat
+
+ebic_eval_optim_GLASSO <- rep(NA, N)      # optimal EBIC value
+
+false_positives_freq <- rep(0, N)  
+false_negatives_freq <- rep(0, N)  
+ 
+# Grid length and bound of hyperparameter beta0
+beta0 <-rep(NA, N)
+beta0_grid_length <- 50
+beta0_grid_min <- -15
+
+beta0_max_GLASSO <- function(R){
+  return(log(max(abs(R - diag(diag(R))))))  
+}
+```
+
+## 2.2 running GLASSO estimation
+
+```{R}
+time_GLASSO_freq.start <- Sys.time()
+for(j in 1:N){
+
+  #### Estimating beta ####
+  R <- stats::cov2cor(cov(X_repeats[,,j][1:n, ]))    # cov2cor convert covariance matrix to correlation matrix
+  
+  beta0_grid_max <- beta0_max_GLASSO(R)
+  beta0_grid <- seq(beta0_grid_min, beta0_grid_max, length.out = beta0_grid_length)
+  beta_optimise <- rep(NA, beta0_grid_length)
+  
+  for(b in 1:beta0_grid_length){
+    beta_optimise[b] <- ebic_eval(n, R, U = exp(beta0_grid[b])*U, ebic.gamma, edge.tol)
+  }
+
+  ## Saving beta0
+  min_coord <- which(beta_optimise== min(beta_optimise, na.rm = TRUE), arr.ind = TRUE)
+  beta0[j] <- mean(beta0_grid[min_coord])
+  
+  # Saving the EBIC 
+  ebic_eval_optim_GLASSO[j] <- min(beta_optimise)
+  
+
+  #### Using the optimal beta0 ##
+  GraphicalModel <- golazo(R, L = exp(beta0[j]) * L, U = exp(beta0[j])* U, verbose=FALSE)
+
+  Rho_hat_GLASSO_freq <- threshold(cov2cor(GraphicalModel$K), edge.tol)
+  Rho_squared_error_freq[j] <- sum((Rho_hat_GLASSO_freq - cov2cor(theta_true))^2)
+
+  Rho_hat_zeros_freq <- Rho_hat_GLASSO_freq[lower.tri(Rho_hat_GLASSO_freq)]
+  
+
+  false_positives_freq[j] <- sum((Rho_hat_zeros_freq != 0) & (Rho_zeros == 0))  
+  false_negatives_freq[j] <- sum((Rho_hat_zeros_freq == 0) & (Rho_zeros != 0))
+  
+  Ps[j] <-  sum(Rho_hat_zeros_freq != 0)
+  Ns[j] <-  sum(Rho_hat_zeros_freq == 0)
+  
+  cat("GLASSO_freq", "n", n , "Repeat", j, "done", "\n")  
+}
+time_GLASSO_freq.end <- Sys.time()
+```
+
+## 2.3 Summary
+
+```{R}
+# Time
+time_GLASSO_freq1 <- time_GLASSO_freq.end - time_GLASSO_freq.start
+time_GLASSO_freq <- round(time_GLASSO_freq1/N, 3)
+time_GLASSO_freq
+
+# total positives and negatives in Rho
+total_negatives <- sum(Rho_zeros == 0)
+total_positives <- sum(Rho_zeros != 0)
+
+# MSE, FPR,FNR, TCR, FDiscR and FNonDiscR
+MSE_GLASSO_freq <- round(mean(Rho_squared_error_freq), 3)  
+FPR_GLASSO_freq  <- round(mean(false_positives_freq/total_negatives), 3)         
+FNR_GLASSO_freq  <- round(mean(false_negatives_freq/total_positives), 3)
+TCR_GLASSO_freq  <- round(sum((false_positives_freq == 0) & (false_negatives_freq == 0))/N, 3)  
+
+FDiscR_GLASSO <- round(mean(false_positives_freq / Ps), 3) 
+FNonDiscR_GLASSO <- round(mean(false_negatives_freq /Ns), 3)
+
+ 
+beta0_GLASSO_freq <- beta0
+m_beta0_GLASSO_freq  <-round(mean(beta0), 3)
+m_ebic_eval_optim_GLASSO <- round(mean(ebic_eval_optim_GLASSO), 3)
+
+
+MSE_GLASSO_freq
+FPR_GLASSO_freq
+FNR_GLASSO_freq
+TCR_GLASSO_freq
+
+FDiscR_GLASSO 
+FNonDiscR_GLASSO
+
+beta0_GLASSO_freq
+m_beta0_GLASSO_freq
+
+ebic_eval_optim_GLASSO
+m_ebic_eval_optim_GLASSO
+```
+
+
+# 3. Network GLASSO - A_semidep85 
+
+## 3.1 Basic setting
+
+```{R}
+
+Rho_zeros <- cov2cor(theta_true)[lower.tri(cov2cor(theta_true))]  
+Rho_squared_error_freq <- rep(0, N) 
+
+Ps <- rep(0, N)   # all positives in Rho_hat
+Ns <- rep(0, N)   # all negatives in Rho_hat
+
+
+ebic_eval_optim_GOLAZO_A_semidep85 <- rep(NA, N)
+
+
+false_positives_freq <- rep(0, N)  
+false_negatives_freq <- rep(0, N)   
+
+# Grid length and bound of hyperparameter beta
+beta <- matrix(NA, nrow = N, ncol = 2)
+
+beta0_grid_length <- 50
+beta0_grid_max <- 2
+beta0_grid_min <- -5
+
+beta0_grid <- seq(beta0_grid_min, beta0_grid_max, length.out = beta0_grid_length - 1)
+beta0_grid <- sort(c(beta0_grid, 0)) 
+
+beta1_grid_length <- 50
+beta1_grid_max <- 2
+beta1_grid_min <- -2.5
+
+beta1_grid <- seq(beta1_grid_min, beta1_grid_max, length.out = beta1_grid_length - 1)
+beta1_grid <- sort(c(beta1_grid, 0)) 
+```
+
+## 3.2 running Network GLASSO - A_semidep85 estimation
+
+```{R}
+timer_GOLAZO_A_semidep85.start <- Sys.time()
+for(j in 1:N){
+  
+  #### Estimating beta ####
+  R <- stats::cov2cor(cov(X_repeats[,,j][1:n, ]))   # cov2cor convert covariance matrix to correlation matrix
+  
+  beta_optimise <- matrix(NA, nrow = beta0_grid_length, ncol = beta1_grid_length)
+  for(b0 in 1:beta0_grid_length){
+    for(b1 in 1:beta1_grid_length){
+      #cat("b0 = ", b0, ", b1 = ", b1, "\n")
+      try(beta_optimise[b0, b1] <- ebic_eval_network(n, R, A_scaled_semi_dep85, beta0 = beta0_grid[b0], beta1 = beta1_grid[b1], ebic.gamma, edge.tol))
+    }
+  }
+  
+  ## min_coord is a matrix rather than a vector
+  min_coord <- which(beta_optimise== min(beta_optimise, na.rm = TRUE), arr.ind = TRUE)
+  
+  dim(min_coord) <- c(length(min_coord)/2, 2)
+  beta[j, 1] <- mean(beta0_grid[min_coord[,1]])
+  beta[j, 2] <- mean(beta1_grid[min_coord[,2]])
+  
+  # Saving the EBIC 
+  ebic_eval_optim_GOLAZO_A_semidep85[j] <- min(beta_optimise, na.rm = TRUE) 
+  
+  ## use the optimal beta0 and beta1
+  U <- exp(beta[j,1] + beta[j,2]*A_scaled_semi_dep85) 
+  diag(U) <- 0
+  
+  res <- golazo(R,-U, U, verbose=FALSE)
+  
+  Rho_hat_GOLAZO_A_semidep85_freq <- threshold(cov2cor(res$K), edge.tol)
+  Rho_squared_error_freq[j] <- sum((Rho_hat_GOLAZO_A_semidep85_freq - cov2cor(theta_true))^2)
+  
+  Rho_hat_zeros_freq <- Rho_hat_GOLAZO_A_semidep85_freq[lower.tri(Rho_hat_GOLAZO_A_semidep85_freq)]
+  
+  
+  false_positives_freq[j] <- sum((Rho_hat_zeros_freq != 0) & (Rho_zeros == 0))  
+  false_negatives_freq[j] <- sum((Rho_hat_zeros_freq == 0) & (Rho_zeros != 0))
+  
+  
+  Ps[j] <-  sum(Rho_hat_zeros_freq != 0)
+  Ns[j] <-  sum(Rho_hat_zeros_freq == 0)
+  
+  cat("GOLAZO-A-semidep85_freq", "n", n , "Repeat", j, "done", "\n")    #cat: print output to the screen
+}
+timer_GOLAZO_A_semidep85.end <- Sys.time()
+```
+
+## 3.3 Summary
+
+```{R}
+# Times
+time_GOLAZO_A_semidep85 <- timer_GOLAZO_A_semidep85.end - timer_GOLAZO_A_semidep85.start
+time_GOLAZO_A_semidep85  <- round(time_GOLAZO_A_semidep85/N, 3)
+time_GOLAZO_A_semidep85
+
+# total positives and negatives in Rho
+total_negatives <- sum(Rho_zeros ==0)
+total_positives <- sum(Rho_zeros !=0)
+
+# MSE, FPR,FNR, TCR, FDiscR and FNonDiscR
+MSE_GOLAZO_A_semidep85_freq <- round(mean(Rho_squared_error_freq), 3) 
+FPR_GOLAZO_A_semidep85_freq  <- round(mean(false_positives_freq/total_negatives), 3)       
+FNR_GOLAZO_A_semidep85_freq  <- round(mean(false_negatives_freq/total_positives), 3)
+TCR_GOLAZO_A_semidep85_freq  <- round(sum((false_positives_freq == 0) & (false_negatives_freq == 0))/N, 3)  
+
+FDiscR_GOLAZO_A_semidep85 <- round(mean(false_positives_freq / Ps), 3) 
+FNonDiscR_GOLAZO_A_semidep85 <- round(mean(false_negatives_freq /Ns), 3)
+
+
+beta_GOLAZO_A_semidep85_freq   <- beta
+m_beta_GOLAZO_A_semidep85_freq <-round(colMeans(beta_GOLAZO_A_semidep85_freq), 3)
+m_ebic_eval_optim_GOLAZO_A_semidep85 <- round(mean(ebic_eval_optim_GOLAZO_A_semidep85), 3)
+
+MSE_GOLAZO_A_semidep85_freq
+FPR_GOLAZO_A_semidep85_freq
+FNR_GOLAZO_A_semidep85_freq
+TCR_GOLAZO_A_semidep85_freq
+
+
+beta_GOLAZO_A_semidep85_freq 
+m_beta_GOLAZO_A_semidep85_freq
+
+ebic_eval_optim_GOLAZO_A_semidep85
+m_ebic_eval_optim_GOLAZO_A_semidep85
+
+FDiscR_GOLAZO_A_semidep85
+FNonDiscR_GOLAZO_A_semidep85
+```
+
+
+
+# 4. Network GLASSO - A_semidep
+
+## 4.1 Basic setting
+
+```{R}
+Rho_zeros <- cov2cor(theta_true)[lower.tri(cov2cor(theta_true))] 
+Rho_squared_error_freq <- rep(0, N) 
+
+Ps <- rep(0, N)   # all positives in Rho_hat
+Ns <- rep(0, N)   # all negatives in Rho_hat
+
+
+ebic_eval_optim_GOLAZO_A_semidep <- rep(NA, N)
+
+
+false_positives_freq <- rep(0, N)  
+false_negatives_freq <- rep(0, N)   
+
+# Grid length and bound of hyperparameter beta
+beta <- matrix(NA, nrow = N, ncol = 2)
+
+beta0_grid_length <- 50
+beta0_grid_max <- 2
+beta0_grid_min <- -5
+
+beta0_grid <- seq(beta0_grid_min, beta0_grid_max, length.out = beta0_grid_length - 1)
+beta0_grid <- sort(c(beta0_grid, 0)) 
+
+beta1_grid_length <- 50
+beta1_grid_max <- 2
+beta1_grid_min <- -2.5
+
+beta1_grid <- seq(beta1_grid_min, beta1_grid_max, length.out = beta1_grid_length - 1)
+beta1_grid <- sort(c(beta1_grid, 0)) 
+
+```
+
+## 4.2 running Network GLASSO - A_semidep estimation
+
+```{R}
+timer_GOLAZO_semidepA.start <- Sys.time()
+for(j in 1:N){
+  
+  #### Estimating beta ####
+   R <- stats::cov2cor(cov(X_repeats[,,j][1:n, ]))   # cov2cor convert covariance matrix to correlation matrix
+  
+  beta_optimise <- matrix(NA, nrow = beta0_grid_length, ncol = beta1_grid_length)
+  for(b0 in 1:beta0_grid_length){
+    for(b1 in 1:beta1_grid_length){
+      #cat("b0 = ", b0, ", b1 = ", b1, "\n")
+      try(beta_optimise[b0, b1] <- ebic_eval_network(n, R, A_scaled_semi_dep, beta0 = beta0_grid[b0], beta1 = beta1_grid[b1], ebic.gamma, edge.tol))
+    }
+  }
+  
+  ## min_coord is a matrix rather than a vector
+  min_coord <- which(beta_optimise== min(beta_optimise, na.rm = TRUE), arr.ind = TRUE)
+  
+  dim(min_coord) <- c(length(min_coord)/2, 2)
+  beta[j, 1] <- mean(beta0_grid[min_coord[,1]])
+  beta[j, 2] <- mean(beta1_grid[min_coord[,2]])
+  
+  # Saving the EBIC 
+  ebic_eval_optim_GOLAZO_A_semidep[j] <- min(beta_optimise, na.rm = TRUE) 
+  
+  ## use the optimal beta0 and beta1
+  U <- exp(beta[j,1] + beta[j,2]*A_scaled_semi_dep) 
+  diag(U) <- 0
+  
+  res <- golazo(R,-U, U, verbose=FALSE)
+  
+
+  Rho_hat_GOLAZO_semidepA_freq <- threshold(cov2cor(res$K), edge.tol)
+  Rho_squared_error_freq[j] <- sum((Rho_hat_GOLAZO_semidepA_freq - cov2cor(theta_true))^2)
+
+
+  Rho_hat_zeros_freq <- Rho_hat_GOLAZO_semidepA_freq[lower.tri(Rho_hat_GOLAZO_semidepA_freq)]
+  
+  
+  false_positives_freq[j] <- sum((Rho_hat_zeros_freq != 0) & (Rho_zeros == 0))  
+  false_negatives_freq[j] <- sum((Rho_hat_zeros_freq == 0) & (Rho_zeros != 0))
+  
+
+  Ps[j] <-  sum(Rho_hat_zeros_freq != 0)
+  Ns[j] <-  sum(Rho_hat_zeros_freq == 0)
+  
+  cat("GOLAZO-semidepA_freq", "n", n , "Repeat", j, "done", "\n")    #cat: print output to the screen
+}
+timer_GOLAZO_semidepA.end <- Sys.time()
+```
+
+## 4.3 Summary
+
+```{R}
+# Time
+time_GOLAZO_semidepA1 <- timer_GOLAZO_semidepA.end - timer_GOLAZO_semidepA.start
+time_GOLAZO_semidepA  <- round(time_GOLAZO_semidepA1/N, 3)
+time_GOLAZO_semidepA 
+
+# total positives and negatives in Rho
+total_negatives <- sum(Rho_zeros ==0)
+total_positives <- sum(Rho_zeros !=0)
+
+# MSE, FPR,FNR, TCR, FDiscR and FNonDiscR
+MSE_GOLAZO_semidepA_freq <- round(mean(Rho_squared_error_freq), 3) 
+FPR_GOLAZO_semidepA_freq  <- round(mean(false_positives_freq/total_negatives), 3)       
+FNR_GOLAZO_semidepA_freq  <- round(mean(false_negatives_freq/total_positives), 3)
+TCR_GOLAZO_semidepA_freq  <- round(sum((false_positives_freq == 0) & (false_negatives_freq == 0))/N, 3)  
+
+FDiscR_GOLAZO_A_semidep <- round(mean(false_positives_freq / Ps), 3) 
+FNonDiscR_GOLAZO_A_semidep <- round(mean(false_negatives_freq /Ns), 3)
+
+
+beta_GOLAZO_semidepA_freq   <- beta
+m_beta_GOLAZO_semidepA_freq <-round(colMeans(beta_GOLAZO_semidepA_freq), 3)
+m_ebic_eval_optim_GOLAZO_A_semidep <- round(mean(ebic_eval_optim_GOLAZO_A_semidep), 3)
+
+MSE_GOLAZO_semidepA_freq
+FPR_GOLAZO_semidepA_freq
+FNR_GOLAZO_semidepA_freq
+TCR_GOLAZO_semidepA_freq
+
+
+beta_GOLAZO_semidepA_freq 
+m_beta_GOLAZO_semidepA_freq
+
+ebic_eval_optim_GOLAZO_A_semidep
+m_ebic_eval_optim_GOLAZO_A_semidep
+
+
+FDiscR_GOLAZO_A_semidep
+FNonDiscR_GOLAZO_A_semidep
+```
+
+
+# 5. Network GLASSO - A_Indep
+
+## 5.1 Basic setting
+
+```{R}
+Rho_zeros <- cov2cor(theta_true)[lower.tri(cov2cor(theta_true))]  
+Rho_squared_error_freq <- rep(0, N) 
+
+Ps <- rep(0, N)   # all positives in Rho_hat
+Ns <- rep(0, N)   # all negatives in Rho_hat
+
+ebic_eval_optim_GOLAZO_A_indep <- rep(NA, N)
+
+false_positives_freq <- rep(0, N)  
+false_negatives_freq <- rep(0, N)   
+ 
+# Grid length and bound of hyperparameter beta
+beta <- matrix(NA, nrow = N, ncol = 2)
+
+beta0_grid_length <- 50
+beta0_grid_max <- 2
+beta0_grid_min <- -5
+
+beta0_grid <- seq(beta0_grid_min, beta0_grid_max, length.out = beta0_grid_length - 1)
+beta0_grid <- sort(c(beta0_grid, 0)) 
+
+beta1_grid_length <- 50
+beta1_grid_max <- 2
+beta1_grid_min <- -2.5
+
+beta1_grid <- seq(beta1_grid_min, beta1_grid_max, length.out = beta1_grid_length - 1)
+beta1_grid <- sort(c(beta1_grid, 0)) 
+```
+
+## 5.2 running Network GLASSO - A_indep estimation
+
+```{R}
+
+timer_GOLAZO_indA.start <- Sys.time()
+for(j in 1:N){
+  
+  #### Estimating beta ####
+   R <- stats::cov2cor(cov(X_repeats[,,j][1:n, ]))   # cov2cor convert covariance matrix to correlation matrix
+
+  beta_optimise <- matrix(NA, nrow = beta0_grid_length, ncol = beta1_grid_length)
+  for(b0 in 1:beta0_grid_length){
+    for(b1 in 1:beta1_grid_length){
+      #cat("b0 = ", b0, ", b1 = ", b1, "\n")
+      try(beta_optimise[b0, b1] <- ebic_eval_network(n, R, A_scaled_indep, beta0 = beta0_grid[b0], beta1 = beta1_grid[b1], ebic.gamma, edge.tol))
+    }
+  }
+  
+  ## min_coord is a matrix rather than a vector
+  min_coord <- which(beta_optimise== min(beta_optimise, na.rm = TRUE), arr.ind = TRUE)
+
+  dim(min_coord) <- c(length(min_coord)/2, 2)
+  beta[j, 1] <- mean(beta0_grid[min_coord[,1]])
+  beta[j, 2] <- mean(beta1_grid[min_coord[,2]])
+  
+  ebic_eval_optim_GOLAZO_A_indep[j] <- min(beta_optimise, na.rm = TRUE) 
+  
+  ## use the optimal beta0 and beta1
+  U <- exp(beta[j,1] + beta[j,2]*A_scaled_indep) 
+  diag(U) <- 0
+  
+  res <- golazo(R,-U, U, verbose=FALSE)
+  
+  Rho_hat_GOLAZO_indA_freq <- threshold(cov2cor(res$K), edge.tol)
+  Rho_squared_error_freq[j] <- sum((Rho_hat_GOLAZO_indA_freq - cov2cor(theta_true))^2)
+
+  Rho_hat_zeros_freq <- Rho_hat_GOLAZO_indA_freq[lower.tri(Rho_hat_GOLAZO_indA_freq)]
+  
+  
+  false_positives_freq[j] <- sum((Rho_hat_zeros_freq != 0) & (Rho_zeros == 0))  
+  false_negatives_freq[j] <- sum((Rho_hat_zeros_freq == 0) & (Rho_zeros != 0))
+
+  Ps[j] <-  sum(Rho_hat_zeros_freq != 0)
+  Ns[j] <-  sum(Rho_hat_zeros_freq == 0)
+  
+  cat("GOLAZO-indA_freq", "n", n , "Repeat", j, "done", "\n")    #cat: print output to the screen
+}
+timer_GOLAZO_indA.end <- Sys.time()
+```
+
+## 5.3 Summary
+
+```{R}
+# Time
+time_GOLAZO_indA1 <- timer_GOLAZO_indA.end - timer_GOLAZO_indA.start
+time_GOLAZO_indA  <-round(time_GOLAZO_indA1 /N, 3)
+time_GOLAZO_indA 
+
+# total positives and negatives in Rho
+total_negatives <- sum(Rho_zeros ==0)
+total_positives <- sum(Rho_zeros !=0)
+
+# MSE, FPR,FNR, TCR, FDiscR and FNonDiscR
+MSE_GOLAZO_indA_freq <- round(mean(Rho_squared_error_freq), 3) 
+FPR_GOLAZO_indA_freq  <- round(mean(false_positives_freq/total_negatives), 3)         
+FNR_GOLAZO_indA_freq  <- round(mean(false_negatives_freq/total_positives), 3)
+TCR_GOLAZO_indA_freq  <- round(sum((false_positives_freq == 0) & (false_negatives_freq == 0))/N, 3)  
+
+FDiscR_GOLAZO_A_indep <- round(mean(false_positives_freq / Ps), 3) 
+FNonDiscR_GOLAZO_A_indep <- round(mean(false_negatives_freq /Ns), 3)
+
+
+beta_GOLAZO_indA_freq   <- beta
+m_beta_GOLAZO_indA_freq <-round(colMeans(beta_GOLAZO_indA_freq), 3)
+m_ebic_eval_optim_GOLAZO_A_indep <- round(mean(ebic_eval_optim_GOLAZO_A_indep), 3)
+
+
+MSE_GOLAZO_indA_freq
+FPR_GOLAZO_indA_freq
+FNR_GOLAZO_indA_freq
+TCR_GOLAZO_indA_freq
+
+
+beta_GOLAZO_indA_freq 
+m_beta_GOLAZO_indA_freq
+
+ebic_eval_optim_GOLAZO_A_indep
+m_ebic_eval_optim_GOLAZO_A_indep
+
+
+FDiscR_GOLAZO_A_indep  
+FNonDiscR_GOLAZO_A_indep
+```
+
+# 6. Code to produce the Latex table
+
+```{R}
+library(xtable)
+options(xtable.floating = FALSE)
+options(xtable.timestamp = "")
+
+
+table_frame_freq <- data.frame("Method" = c("GLASSO", "GOLAZO - Aindep", "GOLAZO - Asemidep", "GOLAZO - Asemidep85"), 
+                               "Sample Size" = c(n, n, n, n),
+                               "MSE" =  c(MSE_GLASSO_freq, 
+                                          MSE_GOLAZO_indA_freq,
+                                          MSE_GOLAZO_semidepA_freq,
+                                          MSE_GOLAZO_A_semidep85_freq),
+                               "FPR" =  c(FPR_GLASSO_freq, 
+                                          FPR_GOLAZO_indA_freq, 
+                                          FPR_GOLAZO_semidepA_freq,
+                                          FPR_GOLAZO_A_semidep85_freq),
+                               "FNR" =  c(FNR_GLASSO_freq, 
+                                          FNR_GOLAZO_indA_freq, 
+                                          FNR_GOLAZO_semidepA_freq, 
+                                          FNR_GOLAZO_A_semidep85_freq),
+                               "TCR" =  c(TCR_GLASSO_freq, 
+                                          TCR_GOLAZO_indA_freq, 
+                                          TCR_GOLAZO_semidepA_freq, 
+                                          TCR_GOLAZO_A_semidep85_freq),
+                               "FDiscR" = c(FDiscR_GLASSO, 
+                                            FDiscR_GOLAZO_A_indep, 
+                                            FDiscR_GOLAZO_A_semidep, 
+                                            FDiscR_GOLAZO_A_semidep85),
+                               "FNonDiscR" = c(FNonDiscR_GLASSO, 
+                                               FNonDiscR_GOLAZO_A_indep, 
+                                               FNonDiscR_GOLAZO_A_semidep,
+                                               FNonDiscR_GOLAZO_A_semidep85),
+                               "EBIC" = c(m_ebic_eval_optim_GLASSO, 
+                                          m_ebic_eval_optim_GOLAZO_A_indep +log(n), 
+                                          m_ebic_eval_optim_GOLAZO_A_semidep +log(n),
+                                          m_ebic_eval_optim_GOLAZO_A_semidep85 +log(n)),
+                               "hat{beta}_0" = c(m_beta0_GLASSO_freq, 
+                                                 m_beta_GOLAZO_indA_freq[1], 
+                                                 m_beta_GOLAZO_semidepA_freq[1],
+                                                 m_beta_GOLAZO_A_semidep85_freq[1]),
+                               "hat{beta}_1" = c(NA, 
+                                                 m_beta_GOLAZO_indA_freq[2], 
+                                                 m_beta_GOLAZO_semidepA_freq[2], 
+                                                 NA), 
+                               "hat{beta}_2" = c(NA, 
+                                                 NA, 
+                                                 NA,
+                                                 m_beta_GOLAZO_A_semidep85_freq[2]),
+                               "time"       = c(time_GLASSO_freq, 
+                                                time_GOLAZO_indA, 
+                                                time_GOLAZO_semidepA, 
+                                                time_GOLAZO_A_semidep85))
+
+xtable(table_frame_freq, digits=3)
+
+```
+
+

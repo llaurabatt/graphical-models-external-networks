@@ -1,0 +1,670 @@
+---
+title: "priorSpecification Network Spike-and-Slab"
+author: "Jack Jewson"
+date: "30 March 2022"
+output: html_document
+---
+
+This notebook provides code to undertake the prior elicitation exercise outlined in Section A.3 of the paper 
+
+# Packages
+
+```{r packages, include=TRUE, echo=TRUE, eval=TRUE, cache=FALSE}
+
+library(LaplacesDemon)
+
+library(rjson)
+library(data.table)
+library(xtable)
+library(knitr)
+
+library(readr)
+```
+
+## Functions
+
+```{r corr_mat_functions, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+
+corrType_mat_fill <- function(p, values){
+  if(length(values) != (p*(p-1)/2)){return(paste("NOT ENOUGH VALUES"))}
+  rho <- diag(0.5, p)
+  rho[upper.tri(rho, diag = FALSE)] <- values
+  rho <- rho + t(rho)
+  return(rho)
+}
+
+#corrType_mat_fill(4, runif(6))
+
+is.corrMat <- function(rho){
+  maxVal <- (max(abs(rho)) <= 1)
+  PD <- min(eigen(rho)$values) > 0
+  return(as.numeric(maxVal & PD))
+}
+
+```
+
+## Eliciting the spike
+
+Here we also define a Thresholding function
+
+```{r eliciting_NEWspike, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+thresh <- 0.01
+
+prob_thresh <- 0.95
+spike_scale_optim <- optimize(f = function(s0){abs((plaplace(thresh, 0, s0) - plaplace(-thresh, 0, s0)) - prob_thresh)}, lower = 0, upper = 1)
+spike_scale_optim$objective
+
+spike_scale_set <- spike_scale_optim$minimum
+spike_scale_set
+
+s0 <- spike_scale_set
+
+threshold <- function(Theta_mat, threshold){
+  return(Theta_mat*(abs(Theta_mat) >= threshold))
+}
+
+```
+
+# Spike-and-Slab
+
+For Spike-and-Slab GLASSO we have 
+
+$$
+\begin{align}
+\rho_{jk} &\sim (1 - w_{jk})\textrm{DExp}(0, s_0) + 
+               w_{jk}\textrm{DExp}(\eta_{0}, s_{jk}),\\
+w_{jk} &= \frac{1}{1 + \exp(-\eta_{2}a_{jk}))}, \quad s_{jk} = s_0(1 + \exp(-\eta_{1}a_{jk}))\\
+\eta_{00} &\sim \mathcal{N}(m_{0}, g_{0}^2), \quad\eta_{0q} \sim \mathcal{N}(0, g_{0}^2)\\
+\eta_{10} &\sim \mathcal{N}(m_{1}, g_{1}^2), \quad\eta_{1q} \sim \mathcal{N}(0, g_{0}^2)\\
+\eta_{20} &\sim \mathcal{N}(m_{2}, g_{2}), \quad\eta_{2q} \sim \mathcal{N}(0, g_{0}^2).               
+\end{align}               
+$$
+
+Throughout we fix the variance of the network coefficient terms to match that of the intercept and elicit our priors for the average value of the networks, assuming they have been standardised. As a result, we can ignore the network matricies for elicitation.
+
+### Prob of non-zero
+
+We elicit the prior for $\eta_2$ based on the implied prior for $w_{ij}$, the probability that any element is non-zero. We want the implied prior on $w_{ij}$ to be $\textrm{Beta}\left(\frac{2}{p-1} \times 1, \frac{p - 3}{p-1}\times 1\right)$. 
+
+Now we want to elicit a Gaussian on $\eta_2$ that will match this beta-distribution on $w$ as closely as possible. We can do this so as to match the mean and variance of the resulting prior for $w$, given the Gaussian prior on $\eta_2$ to that of the desires beta distribution. 
+
+The mean and variance of a $w \sim \textrm{Beta}\left(\mu v, (1 - \mu)v\right)$ are
+$$
+\begin{align}
+  \mathbb{E}[w] &= \mu\\
+  \textrm{Var}[w]& = \frac{\mu(1-\mu)v^2}{(\mu v + (1-mu)v)^2(\mu v + (1-\mu)v + 1)}\\
+  &= \frac{\mu(1-\mu)v^2}{v^2(v + 1)}\\
+  &= \frac{\mu(1-\mu)}{(v + 1)}\\
+\end{align}
+$$
+
+```{r GLASSO_SS_eta_2_prior_elicit_functions, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+var_beta_fn <- function(mu, v){
+  return(mu*(1-mu)/(v + 1))
+}
+
+w_dist_SS <- function(m_02, s_02, N_MC){
+  eta_2 <- rnorm(N_MC, m_02, s_02)
+  w <- 1/(1+exp(-eta_2))
+  return(w)
+}
+
+w_dist_SS_summaries <- function(m_02, s_02, N_MC){
+  eta_2 <- rnorm(N_MC, m_02, s_02)
+  w <- 1/(1+exp(-eta_2))
+  return(list("mean" = mean(w), "var" = var(w)))
+}
+
+```
+
+Then we can grid search over values of $m_2$ and $g_2$ whose Gaussian distribution matches the required Beta distribution
+
+```{r GLASSO_SS_eta_2_prior_elicit_full, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+m2_seq <- seq(-3, -0.5, length.out = 10)
+g2_seq <- seq(1.5, 3.5, length.out = 10)
+mean_w <- array(NA, dim = c(length(m2_seq), length(g2_seq)))
+var_w <- array(NA, dim = c(length(m2_seq), length(g2_seq)))
+
+for(j in 1:length(m2_seq)){
+  for(k in 1:length(g2_seq)){
+    eval_temp <- w_dist_SS_summaries(m_02 = m2_seq[j], s_02 = g2_seq[k], N_MC = 5000)
+    mean_w[j, k] <- eval_temp$mean
+    var_w[j, k] <- eval_temp$var
+    cat("m0", m2_seq[j], ", s0 ", g2_seq[k], "done", "\n")
+  }
+}
+
+```
+
+### Lower bounding the slab variance 
+
++ We want the mode of the slab to be one orders of magnitude greater than the spike
++ Then we can further say that we want the slab to be at the very least 3 times greater than that of the spike, with very very high probability (e.g. 0.99)
+
+
+```{r GLASSO_SS_eta_1_prior_elict_functions, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+s1_dist_SS <- function(s0, m_01, s_01, N_MC){
+  eta_1 <- rnorm(N_MC, m_01, s_01)
+  s1 <- s0*(1+exp(-eta_1))
+  return(s1)
+}
+
+s1_dist_SS_summaries <- function(s0, m_01, s_01, N_MC, lower_thresh){
+  eta_1 <- rnorm(N_MC, m_01, s_01)
+  s1 <- s0*(1+exp(-eta_1))
+  return(list("mode_multiplier" = (1+exp(-m_01)), "lower_multiplier" = mean(as.numeric(s1 >= lower_thresh*s0))))
+}
+
+
+```
+
+I could elicit the location via the mode, and the variance by a grid search for the 0.99 probability 
+
+```{r GLASSO_SS_eta_1_prior_elict, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+#spike_scale_mode_multiplier <- 100
+spike_scale_mode_multiplier <- 10
+m_01_set_GLASSO_SS <- -log(spike_scale_mode_multiplier - 1)
+m_01_set_GLASSO_SS
+
+
+#spike_scale_lower_multiplier <- 10
+spike_scale_lower_multiplier <- 5
+
+m1_seq <- array(m_01_set_GLASSO_SS, dim = c(1))
+g1_seq <- seq(0.5, 2, length.out = 20)
+mode_s1 <- array(NA, dim = c(length(m1_seq), length(g1_seq)))
+lower_prob <- array(NA, dim = c(length(m1_seq), length(g1_seq)))
+
+for(j in 1:length(m1_seq)){
+  for(k in 1:length(g1_seq)){
+    eval_temp <- s1_dist_SS_summaries(s0 = spike_scale_set, m_01 = m1_seq[j], s_01 = g1_seq[k], N_MC = 5000, lower_thresh = spike_scale_lower_multiplier)
+    mode_s1[j, k] <- eval_temp$mode_multiplier
+    lower_prob[j, k] <- eval_temp$lower_multiplier
+    cat("m1", m1_seq[j], ", g1 ", g1_seq[k], "done", "\n")
+  }
+}
+
+```
+
+### Being Positive Definite 
+
+Above we have been able to elicit the priors for $\eta_2$ based on sparisty/uninformity and $\eta_1$ based on non-degeneracy (to the spike). Given everything else maybe we can elicit the variances of the eta_0's to be as big as possible whilst maintaining PD
+
+
+```{r priorExpected_GLASSO_SS_PD_functions, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+dlaplace_SS <- function(rho, s0, eta_0, eta_1, eta_2){
+  w <- 1/(1+ exp(-eta_2))
+  s1 <- s0*(1+exp(-eta_1))
+  return((1-w)*dlaplace(rho, 0, s0) + w*dlaplace(rho, eta_0, s1))
+  }
+
+# Laplace spike-and-slab generation
+rSSLapalce <- function(n, s0, eta_0, eta_1, eta_2){
+  w <- 1/(1 + exp(-eta_2))
+  slab <- sample(c(0, 1), n, replace = TRUE, prob = c(1-w, w))
+  s1 <- s0*(1+exp(-eta_1))
+  return((1-slab)*rlaplace(n, 0, s0) + slab*rlaplace(n, eta_0, s1))
+}
+
+priorExp_GLASSO_SS_PD_matrix_prob <- function(p, s0, eta_0_p, eta_1_p, eta_2_p, N_MC, verbose = FALSE){
+  # p is the dimension of the matrix 
+  # eta_j_p are the parameters of the Gaussian distribution on the parameters of the Spike-and-Slab distributions
+  # N_MC is the number of repeats wanted to provide the estimate of PD
+  
+  corr_mat_ind <- rep(NA, N_MC)
+  for(j in 1:N_MC){
+      eta_0 <- rnorm(1, eta_0_p[1], eta_0_p[2])
+      eta_1 <- rnorm(1, eta_1_p[1], eta_1_p[2])
+      eta_2 <- rnorm(1, eta_2_p[1], eta_2_p[2])
+      corr_mat_values <- rSSLapalce(p*(p-1)/2, s0, eta_0, eta_1, eta_2)
+      corr_mat <- corrType_mat_fill(p, values = corr_mat_values)
+      corr_mat_ind[j] <- is.corrMat(corr_mat)
+      if(verbose == TRUE){
+        if((j %% (N_MC/10)) == 1){
+          cat(j/N_MC * 100, "% done", "\n")
+        }
+      }
+  }
+  return(list("prob_PD" = mean(corr_mat_ind)))
+}
+
+
+```
+
+```{r GLASSO_SS_eta_0_prior_elicit, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+#p <- 5
+p <- 10
+
+m_00_set_GLASSO_SS <- 0
+
+
+g0_seq <- seq(0.001, 0.5, length.out = 20)
+prob_PD <- rep(NA, length(g0_seq))
+
+for(j in 1:length(g0_seq)){
+  eval_temp <- priorExp_GLASSO_SS_PD_matrix_prob(p, spike_scale_set, eta_0_p = c(m_00_set_GLASSO_SS, g0_seq[j]), eta_1_p = c(m_01_set_GLASSO_SS, s_01_set_GLASSO_SS), eta_2_p = c(m_02_set_GLASSO_SS, s_02_set_GLASSO_SS), N_MC = 5000, verbose = FALSE)
+  prob_PD[j] <- eval_temp$prob_PD
+  cat("g0 ", g0_seq[j], "done", "\n")
+}
+
+```
+
+```{r GLASSO_SS_eta_0_prior_elicit_plot, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+plot(g0_seq, prob_PD, xlab = "s_00", ylab = "Probability of PD", type = "l", lwd = 3, main = paste("p = ", p))
+
+```
+
+
+```{r GLASSO_SS_eta_0_prior_elicit_full_set, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+target_prob <- 0.95
+
+s_00_set_GLASSO_SS <- g0_seq[which.min(abs(prob_PD - target_prob))]
+s_00_set_GLASSO_SS
+
+prob_PD[which(g0_seq == s_00_set_GLASSO_SS)]
+
+```
+
+
+### Plotting draws from the prior predictive
+
+
+```{r GLASSO_SS_prior predictive_functions, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+GLASSO_SS_prior_predictive_sample <- function(n, s0, eta_0_p, eta_1_p, eta_2_p){
+  # p is the dimension of the matrix 
+  # eta_j_p are the parameters of the Gaussian distribution on the parameters of the Spike-and-Slab distributions
+  # N_MC is the number of repeats wanted to provide the estimate of PD
+  
+  eta_0 <- rnorm(n, eta_0_p[1], eta_0_p[2])
+  eta_1 <- rnorm(n, eta_1_p[1], eta_1_p[2])
+  eta_2 <- rnorm(n, eta_2_p[1], eta_2_p[2])
+  #rho <- rSSLapalce(n, s0, eta_0, eta_1, eta_2) ## sample can't handle vector valued w
+  rho <- rep(NA, n)
+  for(j in 1:n){
+    rho[j] <- rSSLapalce(1, s0, eta_0[j], eta_1[j], eta_2[j])
+  }
+  
+  return(rho)
+}
+
+samp_test <- GLASSO_SS_prior_predictive_sample(n = 5000, spike_scale_set, eta_0_p = c(m_00_set_GLASSO_SS, s_00_set_GLASSO_SS), eta_1_p = c(m_01_set_GLASSO_SS, s_01_set_GLASSO_SS), eta_2_p = c(m_02_set_GLASSO_SS, s_02_set_GLASSO_SS))
+
+hist(samp_test, breaks = 20)
+      
+      
+```
+
+## GLASSO-SS
+
+```{r GLASSO_SS_prior_elicit_function, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+GLASSO_SS_prior_elicit <- function(p, g0_seq, m1_seq = NULL, g1_seq, m2_seq, g2_seq, prob_PD_thresh, spike_scale_mode_multiplier, spike_scale_lower_multiplier, target_mean_w = 1*2/(p-1), target_var_w, thresh = 0.01, N_MC = 5000, verbose = FALSE){
+  
+  prob_thresh <- 0.95
+  spike_scale_optim <- optimize(f = function(s0){abs((plaplace(thresh, 0, s0) - plaplace(-thresh, 0, s0)) - prob_thresh)}, lower = 0, upper = 1)
+
+  spike_scale_set <- spike_scale_optim$minimum
+
+  ## eta2
+  mean_w <- array(NA, dim = c(length(m2_seq), length(g2_seq)))
+  var_w <- array(NA, dim = c(length(m2_seq), length(g2_seq)))
+
+  for(j in 1:length(m2_seq)){
+    for(k in 1:length(g2_seq)){
+      eval_temp <- w_dist_SS_summaries(m_02 = m2_seq[j], s_02 = g2_seq[k], N_MC)
+      mean_w[j, k] <- eval_temp$mean
+      var_w[j, k] <- eval_temp$var
+      if(verbose == TRUE){
+        cat("eta2: m0", m2_seq[j], ", s0 ", g2_seq[k], "done", "\n")
+      }
+    }
+  }
+  
+  min_obj <- min(abs(mean_w - target_mean_w) + abs(var_w - target_var_w))
+
+  ind_set <- which((abs(mean_w - target_mean_w) + abs(var_w - target_var_w)) == min_obj, arr.ind = TRUE)
+
+  m_02_set_GLASSO_SS <- m2_seq[ind_set[1]]
+  s_02_set_GLASSO_SS <- g2_seq[ind_set[2]]
+
+  elicited_mean_w <- mean_w[ind_set[1], ind_set[2]]
+  elicited_var_w <- var_w[ind_set[1], ind_set[2]]
+  
+  ## eta1
+  if(is.null(m1_seq) == TRUE){
+    m_01_set_GLASSO_SS <- -log(spike_scale_mode_multiplier - 1)
+    m1_seq <- array(m_01_set_GLASSO_SS, dim = c(1))
+  }
+  
+  mode_s1 <- array(NA, dim = c(length(m1_seq), length(g1_seq)))
+  lower_prob <- array(NA, dim = c(length(m1_seq), length(g1_seq)))
+
+  for(j in 1:length(m1_seq)){
+    for(k in 1:length(g1_seq)){
+      eval_temp <- s1_dist_SS_summaries(s0 = spike_scale_set, m_01 = m1_seq[j], s_01 = g1_seq[k], N_MC, lower_thresh = spike_scale_lower_multiplier)
+      mode_s1[j, k] <- eval_temp$mode_multiplier
+      lower_prob[j, k] <- eval_temp$lower_multiplier
+      if(verbose == TRUE){
+        cat("eta1: m1", m1_seq[j], ", g1 ", g1_seq[k], "done", "\n")
+      }
+      }
+  }
+  
+  target_mode <- spike_scale_mode_multiplier
+  target_lower_prob <- 0.99
+
+  min_obj <- min(abs(mode_s1 - target_mode) + abs(lower_prob - target_lower_prob))
+
+  ind_set <- which((abs(mode_s1 - target_mode) + abs(lower_prob - target_lower_prob)) == min_obj, arr.ind = TRUE)
+
+  #m_01_set_GLASSO_SS <- m1_seq[ind_set[1]]
+  s_01_set_GLASSO_SS <- g1_seq[ind_set[2]]
+  
+  elicited_mode_multiplier <- mode_s1[ind_set[1], ind_set[2]]
+  elicited_lower_multiplier <- lower_prob[ind_set[1], ind_set[2]]
+  
+  ## eta0
+  m_00_set_GLASSO_SS <- 0
+
+  prob_PD <- rep(NA, length(g0_seq))
+  for(j in 1:length(g0_seq)){
+    eval_temp <- priorExp_GLASSO_SS_PD_matrix_prob(p, spike_scale_set, eta_0_p = c(m_00_set_GLASSO_SS, g0_seq[j]), eta_1_p = c(m_01_set_GLASSO_SS, s_01_set_GLASSO_SS), eta_2_p = c(m_02_set_GLASSO_SS, s_02_set_GLASSO_SS), N_MC, verbose = FALSE)
+    prob_PD[j] <- eval_temp$prob_PD
+    if(verbose == TRUE){
+      cat("eta0: g0 ", g0_seq[j], "done", "\n")
+    }
+}
+
+  s_00_set_GLASSO_SS <- g0_seq[which.min(abs(prob_PD - prob_PD_thresh))]
+
+  elicited_prob_PD <- prob_PD[which(g0_seq == s_00_set_GLASSO_SS)]
+  
+  return(list(
+    "prior_params" = list("spike_scale" = spike_scale_set, "m_00" = m_00_set_GLASSO_SS, "s_00" = s_00_set_GLASSO_SS, "m_01" = m_01_set_GLASSO_SS, "s_01" = s_01_set_GLASSO_SS, "m_02" = m_02_set_GLASSO_SS, "s_02" = s_02_set_GLASSO_SS),
+    "elicitation_criteria" = list("spike_density_error" = spike_scale_optim$objective, "Prob_PD" = elicited_prob_PD, "mode_multiplier" =   elicited_mode_multiplier, "lower_multiplier" = elicited_lower_multiplier, "mean_w" = elicited_mean_w, "var_w" = elicited_var_w)
+  ))
+
+  
+}
+
+```
+
+# p = 10 {.tabset}
+
+## GLASSO Spike-and-Slab
+
+```{r GLASSO_SS_p10_prior_elicit_function_run, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+p <- 10
+
+# This is a univarite optimisation so could make this longer
+g0_seq <- seq(0.0001, 0.2, length.out = 30)
+
+g1_seq <- seq(0.05, 1.5, length.out = 20)
+
+m2_seq <- seq(-3, -0.5, length.out = 10)
+g2_seq <- seq(1.5, 3.5, length.out = 10)
+
+
+target_mean_w <- 2/(p-1)
+target_mean_w
+target_var_w <- var_beta_fn(mu = target_mean_w, v = 1)
+target_var_w
+
+#spike_scale_mode_multiplier <- 30
+spike_scale_mode_multiplier <- 10
+#spike_scale_lower_multiplier <- 10
+spike_scale_lower_multiplier <- 3
+
+target_mode_s1 <- spike_scale_mode_multiplier
+target_mode_s1
+target_lower_prob_s1 <- 0.99
+
+prob_PD_thresh <- 0.95
+
+GLASSO_SS_p10_prior_params <- GLASSO_SS_prior_elicit(p, g0_seq, m1_seq = NULL, g1_seq, m2_seq, g2_seq, prob_PD_thresh, spike_scale_mode_multiplier, spike_scale_lower_multiplier, target_mean_w, target_var_w, thresh, N_MC = 5000, verbose = FALSE)
+
+
+```
+
+```{r GLASSO_SS_p10_prior_elicit_function_run_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+GLASSO_SS_p10_prior_params$prior_params
+GLASSO_SS_p10_prior_params$elicitation_criteria
+
+```
+
+### Samples from the prior predictive
+
+```{r GLASSO_SS_p10_prior_elicit_plot, include=TRUE, echo=TRUE, eval=TRUE, cache=FALSE, fig.height = 3, fig.width = 5}
+
+par(mar = c(3.1, 3.3, 1.5, 1.1))  # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default  - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+GLASSO_SS_p10_samp <- GLASSO_SS_prior_predictive_sample(n = 5000, s0 = spike_scale_set, 
+                      eta_0_p = c(GLASSO_SS_p10_prior_params$prior_params$m_00, GLASSO_SS_p10_prior_params$prior_params$s_00), 
+                      eta_1_p = c(GLASSO_SS_p10_prior_params$prior_params$m_01, GLASSO_SS_p10_prior_params$prior_params$s_01), 
+                      eta_2_p = c(GLASSO_SS_p10_prior_params$prior_params$m_02, GLASSO_SS_p10_prior_params$prior_params$s_02))
+
+hist(GLASSO_SS_p10_samp, breaks = 100, xlim = c(-1, 1), probability = TRUE, ylab = "Density", xlab = "rho", main = "p = 10", ylim = c(0, 5), xaxs = "i")#, yaxs = "i")
+box()
+  
+```
+
+
+# p = 50 {.tabset}
+
+## GLASSO Spike-and-Slab
+
+Be careful not to elict s_00 too small
+
+```{r GLASSO_SS_p50_prior_elicit_function_run, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+p <- 50
+
+# This is a univarite optimisation so could make this longer
+g0_seq <- seq(0.0001, 0.2, length.out = 30)
+
+g1_seq <- seq(0.05, 1.5, length.out = 20)
+
+#m2_seq <- seq(-4, -0.5, length.out = 10)
+m2_seq <- seq(-8, -2, length.out = 20)
+g2_seq <- seq(0.5, 5.5, length.out = 20)
+
+
+target_mean_w <- 2/(p-1)
+target_mean_w
+target_var_w <- var_beta_fn(mu = target_mean_w, v = 1)
+target_var_w
+
+#spike_scale_mode_multiplier <- 30
+spike_scale_mode_multiplier <- 10
+#spike_scale_lower_multiplier <- 10
+spike_scale_lower_multiplier <- 3
+
+target_mode_s1 <- spike_scale_mode_multiplier
+target_mode_s1
+target_lower_prob_s1 <- 0.99
+
+prob_PD_thresh <- 0.95
+
+GLASSO_SS_p50_prior_params <- GLASSO_SS_prior_elicit(p, g0_seq, m1_seq = NULL, g1_seq, m2_seq, g2_seq, prob_PD_thresh, spike_scale_mode_multiplier, spike_scale_lower_multiplier, target_mean_w, target_var_w, thresh, N_MC = 5000, verbose = FALSE)
+
+
+```
+
+```{r GLASSO_SS_p50_prior_elicit_function_run_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+GLASSO_SS_p50_prior_params$prior_params
+GLASSO_SS_p50_prior_params$elicitation_criteria
+
+```
+
+### Samples from the prior predictive
+
+```{r GLASSO_SS_p50_prior_elicit_plot, include=TRUE, echo=TRUE, eval=TRUE, cache=FALSE, fig.height = 3, fig.width = 5}
+
+par(mar = c(3.1, 3.3, 1.5, 1.1))  # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default  - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+GLASSO_SS_p50_samp <- GLASSO_SS_prior_predictive_sample(n = 5000, s0 = spike_scale_set, 
+                      eta_0_p = c(GLASSO_SS_p50_prior_params$prior_params$m_00, GLASSO_SS_p50_prior_params$prior_params$s_00), 
+                      eta_1_p = c(GLASSO_SS_p50_prior_params$prior_params$m_01, GLASSO_SS_p50_prior_params$prior_params$s_01), 
+                      eta_2_p = c(GLASSO_SS_p50_prior_params$prior_params$m_02, GLASSO_SS_p50_prior_params$prior_params$s_02))
+
+hist(GLASSO_SS_p50_samp, breaks = 100, xlim = c(-1, 1), probability = TRUE, ylab = "Density", xlab = "rho", main = "p = 10", ylim = c(0, 5), xaxs = "i")#, yaxs = "i")
+box()
+  
+```
+
+
+# COVID Data {.tabset}
+
+## GLASSO Spike-and-Slab
+
+```{r GLASSO_SS_COVID_prior_elicit_function_run, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+p <- 99
+
+# This is a univarite optimisation so could make this longer
+g0_seq <- seq(0.01, 0.15, length.out = 30)
+
+g1_seq <- seq(0.05, 1.5, length.out = 20)
+
+#m2_seq <- seq(-4, -0.5, length.out = 10)
+#m2_seq <- seq(-8, -2, length.out = 20)
+m2_seq <- seq(-10, -6, length.out = 20)
+g2_seq <- seq(0.5, 5.5, length.out = 20)
+
+
+target_mean_w <- 2/(p-1)
+target_mean_w
+target_var_w <- var_beta_fn(mu = target_mean_w, v = 1)
+target_var_w
+
+#spike_scale_mode_multiplier <- 30
+spike_scale_mode_multiplier <- 10
+#spike_scale_lower_multiplier <- 10
+spike_scale_lower_multiplier <- 3
+
+target_mode_s1 <- spike_scale_mode_multiplier
+target_mode_s1
+target_lower_prob_s1 <- 0.99
+
+prob_PD_thresh <- 0.95
+
+GLASSO_SS_COVID_prior_params <- GLASSO_SS_prior_elicit(p, g0_seq, m1_seq = NULL, g1_seq, m2_seq, g2_seq, prob_PD_thresh, spike_scale_mode_multiplier, spike_scale_lower_multiplier, target_mean_w, target_var_w, thresh, N_MC = 5000, verbose = FALSE)
+
+
+```
+
+```{r GLASSO_SS_COVID_prior_elicit_function_run_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+p
+
+GLASSO_SS_COVID_prior_params$prior_params
+GLASSO_SS_COVID_prior_params$elicitation_criteria
+
+```
+
+### Samples from the prior predictive
+
+```{r GLASSO_SS_COVID_prior_elicit_plot, include=TRUE, echo=TRUE, eval=TRUE, cache=FALSE, fig.height = 3, fig.width = 5}
+
+par(mar = c(3.1, 3.3, 1.5, 1.1))  # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default  - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+GLASSO_SS_COVID_samp <- GLASSO_SS_prior_predictive_sample(n = 5000, s0 = spike_scale_set, 
+                      eta_0_p = c(GLASSO_SS_COVID_prior_params$prior_params$m_00, GLASSO_SS_COVID_prior_params$prior_params$s_00), 
+                      eta_1_p = c(GLASSO_SS_COVID_prior_params$prior_params$m_01, GLASSO_SS_COVID_prior_params$prior_params$s_01), 
+                      eta_2_p = c(GLASSO_SS_COVID_prior_params$prior_params$m_02, GLASSO_SS_COVID_prior_params$prior_params$s_02))
+
+hist(GLASSO_SS_COVID_samp, breaks = 100, xlim = c(-1, 1), probability = TRUE, ylab = "Density", xlab = "rho", main = "COVID Data, p = 99", ylim = c(0, 5), xaxs = "i")#, yaxs = "i")
+box()
+  
+```
+
+# Stock Market Data {.tabset}
+
+## GLASSO Spike-and-Slab
+
+```{r GLASSO_SS_STOCK_prior_elicit_function_run, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+p <- 200
+
+# This is a univarite optimisation so could make this longer
+g0_seq <- seq(0.01, 0.15, length.out = 30)
+
+g1_seq <- seq(0.05, 1.5, length.out = 20)
+
+#m2_seq <- seq(-4, -0.5, length.out = 10)
+#m2_seq <- seq(-8, -2, length.out = 20)
+m2_seq <- seq(-10, -6, length.out = 20)
+g2_seq <- seq(0.5, 5.5, length.out = 20)
+
+
+target_mean_w <- 2/(p-1)
+target_mean_w
+target_var_w <- var_beta_fn(mu = target_mean_w, v = 1)
+target_var_w
+
+#spike_scale_mode_multiplier <- 30
+spike_scale_mode_multiplier <- 10
+#spike_scale_lower_multiplier <- 10
+spike_scale_lower_multiplier <- 3
+
+target_mode_s1 <- spike_scale_mode_multiplier
+target_mode_s1
+target_lower_prob_s1 <- 0.99
+
+prob_PD_thresh <- 0.95
+
+GLASSO_SS_STOCK_prior_params <- GLASSO_SS_prior_elicit(p, g0_seq, m1_seq = NULL, g1_seq, m2_seq, g2_seq, prob_PD_thresh, spike_scale_mode_multiplier, spike_scale_lower_multiplier, target_mean_w, target_var_w, thresh, N_MC = 5000, verbose = FALSE)
+
+
+```
+
+```{r GLASSO_SS_STOCK_prior_elicit_function_run_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+GLASSO_SS_STOCK_prior_params$prior_params
+GLASSO_SS_STOCK_prior_params$elicitation_criteria
+
+```
+
+### Samples from the prior predictive
+
+```{r GLASSO_SS_STOCK_prior_elicit_plot, include=TRUE, echo=TRUE, eval=TRUE, cache=FALSE, fig.height = 3, fig.width = 5}
+
+par(mar = c(3.1, 3.3, 1.5, 1.1))  # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default  - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+GLASSO_SS_STOCK_samp <- GLASSO_SS_prior_predictive_sample(n = 5000, s0 = spike_scale_set, 
+                      eta_0_p = c(GLASSO_SS_STOCK_prior_params$prior_params$m_00, GLASSO_SS_STOCK_prior_params$prior_params$s_00), 
+                      eta_1_p = c(GLASSO_SS_STOCK_prior_params$prior_params$m_01, GLASSO_SS_STOCK_prior_params$prior_params$s_01), 
+                      eta_2_p = c(GLASSO_SS_STOCK_prior_params$prior_params$m_02, GLASSO_SS_STOCK_prior_params$prior_params$s_02))
+
+hist(GLASSO_SS_STOCK_samp, breaks = 100, xlim = c(-1, 1), probability = TRUE, ylab = "Density", xlab = "rho", main = "p = 10", ylim = c(0, 5), xaxs = "i")#, yaxs = "i")
+box()
+  
+```
+

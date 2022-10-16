@@ -1,3 +1,4 @@
+#%%
 # imports
 import sys
 import os
@@ -31,7 +32,7 @@ from numpyro.infer import SVI, Trace_ELBO
 os.chdir("/Users/")
 sys.path.append("./functions")
 
-data_save_path = './data/stock_market_data/'
+data_save_path = './data/COVID_data/'
 
 # load models and functions
 import models
@@ -140,9 +141,9 @@ def model_run(Y, my_model, my_model_args, fix_params,  estimates_print,
 #%%
 # Load data
 #%%
-stock_vals = pd.read_csv(data_save_path + 'stock_trans.csv', index_col='Unnamed: 0').values
+covid_vals = pd.read_csv(data_save_path + 'covid1.csv', index_col='Unnamed: 0').values
 
-n,p = stock_vals.shape
+n,p = covid_vals.shape
 #%%
 # params
 
@@ -156,7 +157,8 @@ mu_s=1.
 verbose = True
 algo = 'mcmc'
 my_model = models.glasso_repr
-my_model_args = {"eta1_0_m":eta1_0_m, "eta1_0_s":eta1_0_s, "mu_m":mu_m, "mu_s":mu_s}
+my_model_args = {"eta1_0_m":eta1_0_m, "eta1_0_s":eta1_0_s, 
+"mu_m":mu_m, "mu_s":mu_s}
 is_dense = False
 estimates_print = ["eta1_0"]
 
@@ -173,7 +175,7 @@ my_init_strategy = init_to_feasible
 
 #%%
 print('--------------------------------------------------------------------------------')
-my_res = model_run(Y=stock_vals,  my_model=my_model, my_model_args=my_model_args,
+my_res = model_run(Y=covid_vals,  my_model=my_model, my_model_args=my_model_args,
                    TP_thresh=TP_thresh,
                    n_warmup=n_warmup, n_samples=n_samples,
                    algo=algo, fix_params=fix_params,
@@ -229,7 +231,7 @@ blocked_params_list = ["mu", "eta1_0"]
 my_init_strategy = init_to_feasible
 
 # run model
-my_res = model_run(Y=stock_vals, my_model=my_model, my_model_args=my_model_args,
+my_res = model_run(Y=covid_vals, my_model=my_model, my_model_args=my_model_args,
                    algo=algo, fix_params=fix_params, estimates_print=estimates_print, 
                    my_init_strategy=my_init_strategy,  
                    SVI_samples_low=SVI_samples_low, SVI_samples_high=SVI_samples_high,

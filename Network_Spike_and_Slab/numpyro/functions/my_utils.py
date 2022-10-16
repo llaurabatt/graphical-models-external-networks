@@ -14,8 +14,7 @@ from jax.random import PRNGKey as Key
 from numpyro.util import enable_x64
 import sys
 import os
-os.chdir("/Users/")
-sys.path.append("functions")
+sys.path.append("./functions")
 import models
 
 #%%

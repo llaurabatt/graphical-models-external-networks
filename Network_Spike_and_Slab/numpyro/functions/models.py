@@ -104,7 +104,7 @@ def glasso_ss_repr(eta0_0_m=0., eta0_0_s=2., eta1_0_m=-7., eta1_0_s=2., eta2_0_m
         
     return {'Y':Y, 'theta_true':theta, 'mu_true':mu, 'scale_spike_true':scale_spike}
 #%%
-def NetworkSS_ss_repr(A_list, eta0_0_m=0., eta0_0_s=5., eta1_0_m=0., eta1_0_s=5., eta2_0_m=0., eta2_0_s=5.,
+def NetworkSS_repr(A_list, eta0_0_m=0., eta0_0_s=5., eta1_0_m=0., eta1_0_s=5., eta2_0_m=0., eta2_0_s=5.,
               eta0_coefs_m=0., eta0_coefs_s=5., eta1_coefs_m=0., eta1_coefs_s=5., eta2_coefs_m=0., eta2_coefs_s=5., 
            mu_m=0., mu_s=1., Y=None, n=None, p=None):
 

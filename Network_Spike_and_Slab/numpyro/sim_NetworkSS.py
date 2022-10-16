@@ -386,7 +386,7 @@ n_samples = 5000
 mu_m=0.
 mu_s=1.
 verbose = True
-my_model = models.NetworkSS_ss_repr
+my_model = models.NetworkSS_repr
 is_dense=False
 estimates_print = []
 

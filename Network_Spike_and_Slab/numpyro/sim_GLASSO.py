@@ -24,10 +24,10 @@ from numpyro.infer import SVI, Trace_ELBO
 from numpyro.infer.autoguide import AutoDelta
 
 # paths
-os.chdir("/Users/")
-sys.path.append("functions")
+os.chdir('/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/paper_code_github/')
+sys.path.append("/Network_Spike_and_Slab/numpyro/functions")
 
-sim_data_path = './data/sim_data/'
+sim_data_path = './Data/Simulations/'
 data_save_path = './data/sim_GLASSO_data/'
 
 # load models and functions

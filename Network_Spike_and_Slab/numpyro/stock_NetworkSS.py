@@ -27,10 +27,10 @@ from numpyro.infer import init_to_feasible, init_to_value
 
 #%%
 # paths
-os.chdir("/Users/")
-sys.path.append("./functions")
+os.chdir('/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/paper_code_github/')
+sys.path.append("/Network_Spike_and_Slab/numpyro/functions")
 
-data_save_path = './data/stock_market_data/'
+data_save_path = './Data/Stock/Pre-processed Data/'
 
 # load models and functions
 import models
@@ -203,17 +203,20 @@ with open(data_save_path +f'glasso_map.sav', 'rb') as fr:
     svi_glasso = pickle.load(fr)
     
 rho_tilde_init = svi_glasso['rho_tilde']
+#rho_tilde_init = jnp.zeros((int(p*(p-1)/2),))
+u_init = jnp.ones((int(p*(p-1)/2),))*0.5
 mu_init = jnp.zeros((p,))
 sqrt_diag_init = jnp.ones((p,))
 my_init_strategy = init_to_value(values={'rho_tilde':rho_tilde_init,
+                                         'u':u_init,
                                          'mu':mu_init, 
                                          'sqrt_diag':sqrt_diag_init, 
                                          'tilde_eta0_0':0.,
                                          'tilde_eta1_0':0.,
-                                        'tilde_eta2_0':0.,                                     
-                                        'tilde_eta0_coefs':jnp.array([0.,0.]),
-                                        'tilde_eta1_coefs':jnp.array([0.,0.]),
-                                        'tilde_eta2_coefs':jnp.array([0.,0.]),})
+                                         'tilde_eta2_0':0.,                                     
+                                         'tilde_eta0_coefs':jnp.array([0.,0.]),
+                                         'tilde_eta1_coefs':jnp.array([0.,0.]),
+                                         'tilde_eta2_coefs':jnp.array([0.,0.]),})
 
 estimates_print = ["w_slab", "mean_slab", "scale_slab"]
 #%%
@@ -240,6 +243,8 @@ with open(data_save_path + f'NetworkSS_E_P_1mcmc.sav' , 'wb') as f:
 #%%
 hyperpars = ['eta0_0', 'eta0_coefs', 'eta1_0', 'eta1_coefs', 'eta2_0', 'eta2_coefs']
 
+# Empircal Bayes marginal MAP estimates
+
 best_params = {'eta0_0':{'bandwidth': 0.1, 'kernel': 'linear'}, 
                        'eta0_coefs':{'bandwidth': 0.1, 'kernel': 'linear'},
                        'eta1_0':{'bandwidth': 0.3088843596477481, 'kernel': 'linear'}, 
@@ -247,7 +252,10 @@ best_params = {'eta0_0':{'bandwidth': 0.1, 'kernel': 'linear'},
                        'eta2_0':{'bandwidth': 1.2648552168552958, 'kernel': 'linear'}, 
                        'eta2_coefs':{'bandwidth': 0.2559547922699536, 'kernel': 'gaussian'}}
 
-x_d = np.linspace(-10, 12, 1000)
+x_ranges = {'eta0_0':np.linspace(-0.1, 0.1, 1000), 'eta0_coefs':np.linspace(-0.1, 0.1, 1000),
+           'eta1_0':np.linspace(-7, -2, 1000), 'eta1_coefs':np.linspace(-2, 1, 1000),
+           'eta2_0':np.linspace(-10, 7, 1000), 'eta2_coefs':np.linspace(-3, 7, 1000)}
+           
 etas_MAPs = {'eta0_0':0, 
                        'eta0_coefs':0,
                        'eta1_0':0, 
@@ -264,9 +272,9 @@ for par in hyperpars:
         kde = KernelDensity(**best_params[par])
         kde.fit(samples[:, None])
 
-        logdensity = kde.score_samples(x_d[:, None])
+        logdensity = kde.score_samples(x_ranges[par][:, None])
         density = jnp.exp(logdensity)
-        MAP_1 = x_d[jnp.argmax(density)]
+        MAP_1 = x_ranges[par][jnp.argmax(density)]
         post_mean_1 = samples.mean()
 
         ############
@@ -275,9 +283,9 @@ for par in hyperpars:
         kde = KernelDensity(**best_params[par])
         kde.fit(samples[:, None])
 
-        logdensity = kde.score_samples(x_d[:, None])
+        logdensity = kde.score_samples(x_ranges[par][:, None])
         density = jnp.exp(logdensity)
-        MAP_2 = x_d[jnp.argmax(density)]
+        MAP_2 = x_ranges[par][jnp.argmax(density)]
         post_mean_2 = samples.mean()
         etas_MAPs[par] = jnp.hstack([MAP_1, MAP_2])
         print(f'{par} P: MAP {MAP_2}, post. mean {post_mean_2}')
@@ -289,9 +297,9 @@ for par in hyperpars:
         kde = KernelDensity(**best_params[par])
         kde.fit(samples[:, None])
 
-        logdensity = kde.score_samples(x_d[:, None])
+        logdensity = kde.score_samples(x_ranges[par][:, None])
         density = jnp.exp(logdensity)
-        MAP = x_d[jnp.argmax(density)]
+        MAP = x_ranges[par][jnp.argmax(density)]
         post_mean = samples.mean()
         etas_MAPs[par] = MAP
 #%%
@@ -349,7 +357,7 @@ def SVI_init_strategy_golazo_ss(A_list, mcmc_res, fixed_params_dict):
     w_slab = (1+jnp.exp(-eta2_0_MAP-A_tril_mean2_MAP))**(-1)
     
     u_init = mcmc_res['all_samples']['u'][jnp.argmin(dists)]
-    is_spike = my_utils.my_sigmoid(u_init, beta=500., alpha=w_slab)
+    is_spike = my_utils.my_sigmoid(u_init, beta=100., alpha=w_slab)
 
     rho_tilde_init = (rho_lt_init-mean_slab*(1-is_spike))/(is_spike*scale_spike_fixed + (1-is_spike)*scale_slab)
     sqrt_diag_init = mcmc_res['all_samples']['sqrt_diag'][jnp.argmin(dists)]

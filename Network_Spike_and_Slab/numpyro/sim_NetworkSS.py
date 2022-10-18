@@ -21,10 +21,10 @@ from numpyro.util import enable_x64
 from numpyro.infer import init_to_feasible, init_to_value
 
 # paths
-os.chdir("/Users/")
-sys.path.append("functions")
+os.chdir('/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/paper_code_github/')
+sys.path.append("/Network_Spike_and_Slab/numpyro/functions")
 
-sim_data_path = './data/sim_data/'
+sim_data_path = './Data/Simulations/'
 data_save_path = './data/sim_NetworkSS_data/'
 data_init_path = './data/sim_GLASSO_data/'
 
@@ -232,14 +232,17 @@ for p_ix, p in enumerate(ps):
                 sim_res = pickle.load(fr)
 
             # init strategy common params
-            with open(data_init_path + f'glasso_{s}_p{p}_n{n_cut}_map.sav' , 'rb') as fr:
-                svi_glasso = pickle.load(fr)
-            rho_tilde_init = svi_glasso['rho_tilde']
+            #with open(data_init_path + f'glasso_{s}_p{p}_n{n_cut}_map.sav' , 'rb') as fr:
+            #    svi_glasso = pickle.load(fr)
+            #rho_tilde_init = svi_glasso['rho_tilde']
+            rho_tilde_init = jnp.zeros((int(p*(p-1)/2),))
+            u_init = jnp.ones((int(p*(p-1)/2),))*0.5
             mu_init = jnp.zeros((p,))
             sqrt_diag_init = jnp.ones((p,))
 
             # init strategy
             my_init_strategy = init_to_value(values={'rho_tilde':rho_tilde_init, 
+                                                     'u':u_init,
                                                      'mu':mu_init, 
                                                      'sqrt_diag':sqrt_diag_init, 
                                                      'tilde_eta0_0':0.,
@@ -322,6 +325,8 @@ for p_ix, p in enumerate(ps):
 networks = ['85semi', '75semi', 'indep']
 hyperpars = ['eta0_0', 'eta0_coefs', 'eta1_0', 'eta1_coefs',
              'eta2_0', 'eta2_coefs']
+             
+# Empircal Bayes marginal MAP estimates
 
 best_params = {'85semi':{'eta0_0':{'bandwidth': 0.1, 'kernel': 'linear'}, 
                        'eta0_coefs':{'bandwidth': 0.1, 'kernel': 'linear'},
@@ -437,7 +442,7 @@ def SVI_init_strategy_golazo_ss(mcmc_res, fixed_params_dict,
     w_slab = (1+jnp.exp(-eta2_0_MAP-A_tril_mean2_MAP))**(-1)
     
     u_init = mcmc_res['all_samples']['u'][jnp.argmin(dists)]
-    is_spike = my_utils.my_sigmoid(u_init, beta=500., alpha=w_slab)
+    is_spike = my_utils.my_sigmoid(u_init, beta=100., alpha=w_slab)
 
     rho_tilde_init = (rho_lt_init-mean_slab*(1-is_spike))/(is_spike*scale_spike_fixed + (1-is_spike)*scale_slab)
     sqrt_diag_init = mcmc_res['all_samples']['sqrt_diag'][jnp.argmin(dists)]

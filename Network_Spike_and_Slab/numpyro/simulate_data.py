@@ -15,10 +15,12 @@ import jax.numpy as jnp
 
 
 # paths
-os.chdir("/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-regression-with-networks/numpyro/FINAL_ALL")
+#os.chdir("/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-regression-with-networks/numpyro/FINAL_ALL")
+os.chdir("/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/paper_code_github")
 sys.path.append("functions")
 import my_utils
-data_save_path = './data/sim_data'
+#data_save_path = './data/sim_data'
+data_save_path = './Data/Simulations/'
 
 # parameters
 p_list = [10, 50]

@@ -34,7 +34,7 @@ The folder `Raw Data` contains the raw data files required to run this analysis.
 
 The folder `Pre-processed Data` contains the output files of our pre-processing, those files required to estimate our graphical models.
 
-## network GLASSO 
+## Network GLASSO 
 
 The `Network_GLASSO` folder contains `.Rmd` files for undertaking the network GLASSO analyses as explained in Sections 3.2 and 4.1.
 

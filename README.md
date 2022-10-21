@@ -1,6 +1,6 @@
 # Graphical model inference with external network data
 
-This repository contains all of the code associated with the paper ''Graphical model inference with external network data''  Jewson, Li, Battaglia, Hansen, Rossell, and Zwiernik (2022) available at ..........
+This repository contains all of the code associated with the paper ''Graphical model inference with external network data''  Jewson, Li, Battaglia, Hansen, Rossell, and Zwiernik (2022) available at https://arxiv.org/abs/2210.11107
 
 This repository is organised into three sections further explained below
 

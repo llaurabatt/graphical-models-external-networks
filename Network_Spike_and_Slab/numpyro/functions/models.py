@@ -2,8 +2,8 @@
 import my_utils
 import jax
 import numpyro
-numpyro.set_platform('cpu')
-print(jax.lib.xla_bridge.get_backend().platform)
+# numpyro.set_platform('cpu')
+# print(jax.lib.xla_bridge.get_backend().platform)
 import jax.numpy as jnp
 import jax.nn as nn
 from numpyro import plate, sample,  factor

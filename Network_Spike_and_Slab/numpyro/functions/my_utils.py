@@ -6,8 +6,8 @@ import seaborn as sns
 from sklearn.neighbors import KernelDensity
 import jax
 import numpyro
-numpyro.set_platform('cpu')
-print(jax.lib.xla_bridge.get_backend().platform)
+# numpyro.set_platform('cpu')
+# print(jax.lib.xla_bridge.get_backend().platform)
 import jax.numpy as jnp
 import numpyro.distributions as dist
 from jax.random import PRNGKey as Key

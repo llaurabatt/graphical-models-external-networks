@@ -1,6 +1,6 @@
 #%%
 import sys
-sys.path.append('/Users/llaurabat/opt/anaconda3/lib/python3.8/site-packages')
+# sys.path.append('/Users/llaurabat/opt/anaconda3/lib/python3.8/site-packages')
 #%%
 # imports
 import sys
@@ -9,23 +9,21 @@ import pickle
 # import json
 import jax
 import numpyro
-numpyro.set_platform('cpu')
+numpyro.set_platform('gpu')
 print(jax.lib.xla_bridge.get_backend().platform)
 import jax.numpy as jnp
 
 
 # paths
-#os.chdir("/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-regression-with-networks/numpyro/FINAL_ALL")
-os.chdir("/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/paper_code_github")
-sys.path.append("functions")
+_CURRENT_DIR = "/home/user/graphical-models-external-networks/Data/Simulations"
+os.chdir(_CURRENT_DIR)
+sys.path.append("/home/user/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 import my_utils
-#data_save_path = './data/sim_data'
-data_save_path = './Data/Simulations/'
 
 # parameters
-p_list = [10, 50]
+p_list = [2000]
 n = 2000
-n_sims = 50
+n_sims = 1
 w_slab_1 = 0.95
 w_slab_0_numerator = 0.5
 w_slab_1, w_slab_0_numerator
@@ -93,7 +91,9 @@ for p in p_list:
 #         sim_res_json = {k:np.array(v).tolist() for k,v in sim_res.items()}
 #         with open(data_save_path + f'/sim{s}_p{p}_n{n}.json' , 'w') as f:
 #             json.dump((sim_res_json), f)
-        
-        with open(data_save_path + f'/sim{s}_p{p}_n{n}.sav' , 'wb') as f:
+
+        if not os.path.exists(_CURRENT_DIR + '/sim_data'):
+            os.makedirs(_CURRENT_DIR + '/sim_data', mode=0o777)
+        with open(_CURRENT_DIR + '/sim_data' + f'/sim{s}_p{p}_n{n}.sav' , 'wb') as f:
             pickle.dump((sim_res), f)
 # %%

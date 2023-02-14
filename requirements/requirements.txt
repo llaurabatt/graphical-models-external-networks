@@ -1,0 +1,11 @@
+absl-py
+chex
+seaborn
+scikit-learn
+matplotlib
+ml-collections
+numpy
+optax
+pandas
+tensorflow; sys_platform != 'darwin' or platform_machine != 'arm64'
+tensorflow-macos; sys_platform == 'darwin' and platform_machine == 'arm64'

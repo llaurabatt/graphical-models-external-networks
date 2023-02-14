@@ -9,7 +9,7 @@ from sklearn.neighbors import KernelDensity
 # %%
 import jax
 import numpyro
-numpyro.set_platform('cpu')
+numpyro.set_platform('gpu')
 print(jax.lib.xla_bridge.get_backend().platform)
 
 import jax.numpy as jnp
@@ -26,10 +26,14 @@ from numpyro.infer import init_to_feasible, init_to_value
 
 #%%
 # paths
-os.chdir('/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/paper_code_github/')
-sys.path.append("/Network_Spike_and_Slab/numpyro/functions")
+ROOT_DIR = "/home/user/graphical-models-external-networks/"
+os.chdir(_ROOT_DIR)
+sys.path.append("/home/user/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
-data_save_path = './Data/COVID/Pre-processed Data/'
+data_path = './Data/COVID/Pre-processed Data/'
+data_save_path = './Network_Spike_and_Slab/numpyro/NetworkSS_results/'
+if not os.path.exists(data_save_path):
+    os.makedirs(data_save_path, mode=0o777)
 
 # load models and functions
 import models
@@ -86,8 +90,8 @@ def model_mcmc_run(Y, my_model, my_model_args, fix_params,  key_no_run, estimate
                 extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state'))
 
             mcmc_last_state = mcmc.last_state
-            with open(data_save_path + temp_name + '_' + f'mcmc_last_state.sav' , 'wb') as f:
-                pickle.dump((mcmc_last_state), f)
+            # with open(data_save_path + temp_name + '_' + f'mcmc_last_state.sav' , 'wb') as f:
+            #     pickle.dump((mcmc_last_state), f)
 
             temp = {}
             temp['all_samples'] = mcmc.get_samples()
@@ -156,9 +160,9 @@ def model_mcmc_run(Y, my_model, my_model_args, fix_params,  key_no_run, estimate
     return res
 #%%
 # load data
-covid_vals = pd.read_csv(data_save_path + 'covid1.csv', index_col='Unnamed: 0').values
-geo_clean = jnp.array(jnp.load(data_save_path + 'GEO_clean.npy'))
-sci_clean = jnp.array(jnp.load(data_save_path + 'SCI_clean.npy'))
+covid_vals = pd.read_csv(data_path + 'covid1.csv', index_col='Unnamed: 0').values
+geo_clean = jnp.array(jnp.load(data_path + 'GEO_clean.npy'))
+sci_clean = jnp.array(jnp.load(data_path + 'SCI_clean.npy'))
 
 n,p = covid_vals.shape
 #%%

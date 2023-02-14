@@ -1,5 +1,10 @@
 #%%
 # imports
+import debugpy
+debugpy.listen(5678)
+print('Waiting for debugger')
+debugpy.wait_for_client()
+print('Debugger attached')
 import sys
 import os
 import pandas as pd
@@ -10,7 +15,7 @@ from sklearn.neighbors import KernelDensity
 # %%
 import jax
 import numpyro
-numpyro.set_platform('cpu')
+numpyro.set_platform('gpu')
 print(jax.lib.xla_bridge.get_backend().platform)
 
 import jax.numpy as jnp
@@ -29,10 +34,14 @@ from numpyro.infer.autoguide import AutoDelta
 from numpyro.infer import SVI, Trace_ELBO
 #%%
 # paths
-os.chdir('/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/paper_code_github/')
-sys.path.append("/Network_Spike_and_Slab/numpyro/functions")
+_ROOT_DIR = "/home/user/graphical-models-external-networks/"
+os.chdir(_ROOT_DIR)
+sys.path.append("/home/user/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
-data_save_path = './Data/COVID/Pre-processed Data/'
+data_path = './Data/COVID/Pre-processed Data/'
+data_save_path = './Network_Spike_and_Slab/numpyro/NetworkSS_results/'
+if not os.path.exists(data_save_path):
+    os.makedirs(data_save_path, mode=0o777)
 
 # load models and functions
 import models
@@ -66,12 +75,36 @@ def model_run(Y, my_model, my_model_args, fix_params,  estimates_print,
     if algo=='mcmc':
         nuts_kernel = NUTS(my_model_run, init_strategy=my_init_strategy, dense_mass=is_dense)
 
-        mcmc = MCMC(nuts_kernel, num_warmup=n_warmup, num_samples=n_samples)
+        mcmc = MCMC(nuts_kernel, num_warmup=n_warmup, num_samples=batch)
         mcmc.run(rng_key = Key(key_no_run+3), Y=Y, **my_model_args,
                 extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state'))
-        
 
-        res['all_samples'] = mcmc.get_samples()
+        for b in range(n_batches-1):
+            sample_batch = mcmc.get_samples()
+            if b==0:
+                temp = {k:[] for k in sample_batch.keys()}
+                temp_keys = list(temp.keys())
+            
+            for k in temp_keys:
+                temp[k].append(sample_batch[k])
+
+            mcmc.post_warmup_state = mcmc.last_state
+            mcmc.run(mcmc.post_warmup_state.rng_key, Y=Y, **my_model_args,
+                extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state'))  # or mcmc.run(random.PRNGKey(1))
+            if b==(n_batches-2):
+                for k in temp_keys:
+                    temp[k].append(sample_batch[k])
+
+
+        for k in temp_keys:
+            try:
+                assert jnp.array(temp[k]).ndim==3
+                temp[k] = jnp.vstack(jnp.array(temp[k]))
+            except:
+                new = jnp.array(temp[k])[:,:,None]
+                temp[k] = jnp.vstack(new)
+
+        res['all_samples'] = temp
         res['accept_prob'] = mcmc.get_extra_fields()['accept_prob']
         res['num_steps'] = mcmc.get_extra_fields()['num_steps']
         res['adapt_state'] = mcmc.get_extra_fields()['adapt_state']
@@ -141,7 +174,7 @@ def model_run(Y, my_model, my_model_args, fix_params,  estimates_print,
 #%%
 # Load data
 #%%
-covid_vals = pd.read_csv(data_save_path + 'covid1.csv', index_col='Unnamed: 0').values
+covid_vals = pd.read_csv(data_path + 'COVID_greaterthan50000.csv', index_col='Unnamed: 0').values
 
 n,p = covid_vals.shape
 #%%
@@ -149,6 +182,8 @@ n,p = covid_vals.shape
 
 n_warmup = 1000
 n_samples = 5000
+n_batches = 100
+batch = int(n_samples/n_batches)
 eta1_0_m= 10.556
 eta1_0_s= 3.
 mu_m=0.
@@ -185,7 +220,7 @@ my_res = model_run(Y=covid_vals,  my_model=my_model, my_model_args=my_model_args
                         my_init_strategy=my_init_strategy,  
              verbose=verbose, key_no_run=p)
 
-with open(data_save_path + f'glasso_mcmc.sav' , 'wb') as f:
+with open(data_save_path + f'glasso_mcmc_975.sav' , 'wb') as f:
     pickle.dump((my_res), f)
 
 #%%
@@ -196,9 +231,9 @@ down = -2
 up = 12
 x_d = np.linspace(down, up, 1000)
 #%%
-with open(data_save_path + f'glasso_mcmc.sav', 'rb') as fr:
+with open(data_save_path + f'glasso_mcmc_975.sav', 'rb') as fr:
     res = pickle.load(fr)
-eta1_0_samples = res['all_samples']['eta1_0']
+eta1_0_samples = res['all_samples']['eta1_0'].flatten()
 
 kde = KernelDensity(**best_params)
 kde.fit(eta1_0_samples[:, None])
@@ -222,7 +257,7 @@ adam_start=0.005
 
 estimates_print=[]
 #%%
-with open(data_save_path + f'glasso_mcmc.sav', 'rb') as fr:
+with open(data_save_path + f'glasso_mcmc_975.sav', 'rb') as fr:
     res = pickle.load(fr)
 fix_params = True
 fixed_params_dict = {"mu":mu_fixed, "eta1_0":eta1_0_MAPs}
@@ -238,7 +273,7 @@ my_res = model_run(Y=covid_vals, my_model=my_model, my_model_args=my_model_args,
              fixed_params_dict=fixed_params_dict, blocked_params_list=blocked_params_list, 
                    verbose=verbose, key_no_run=p, adam_start=adam_start)
 
-with open(data_save_path + f'glasso_map.sav', 'wb') as f:
+with open(data_save_path + f'glasso_map_975.sav', 'wb') as f:
     pickle.dump((my_res), f)
 #%%
 

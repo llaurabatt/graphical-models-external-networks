@@ -32,6 +32,17 @@ from numpyro.infer import init_to_feasible, init_to_value
 from optax import adam
 from numpyro.infer.autoguide import AutoDelta
 from numpyro.infer import SVI, Trace_ELBO
+import os,sys,humanize,psutil,GPUtil
+import jax.profiler
+
+# Define function
+def mem_report():
+  print("CPU RAM Free: " + humanize.naturalsize( psutil.virtual_memory().available ))
+  
+  GPUs = GPUtil.getGPUs()
+  for i, gpu in enumerate(GPUs):
+    print('GPU {:d} ... Mem Free: {:.0f}MB / {:.0f}MB | Utilization {:3.0f}%'.format(i, gpu.memoryFree, gpu.memoryTotal, gpu.memoryUtil*100))
+  
 #%%
 # paths
 _ROOT_DIR = "/home/user/graphical-models-external-networks/"
@@ -42,11 +53,12 @@ data_path = './Data/COVID/Pre-processed Data/'
 data_save_path = './Network_Spike_and_Slab/numpyro/NetworkSS_results/'
 if not os.path.exists(data_save_path):
     os.makedirs(data_save_path, mode=0o777)
-
+#%%
 # load models and functions
 import models
+#%%
 import my_utils
-
+#%%
 enable_x64(use_x64=True)
 print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
 #%%
@@ -71,7 +83,7 @@ def model_run(Y, my_model, my_model_args, fix_params,  estimates_print,
         my_model_run = block(condition(my_model, fixed_params_dict), hide=blocked_params_list)
     else:
         my_model_run = my_model
-        
+    jax.profiler.save_device_memory_profile("memory.prof2")
     if algo=='mcmc':
         nuts_kernel = NUTS(my_model_run, init_strategy=my_init_strategy, dense_mass=is_dense)
 
@@ -94,6 +106,8 @@ def model_run(Y, my_model, my_model_args, fix_params,  estimates_print,
             if b==(n_batches-2):
                 for k in temp_keys:
                     temp[k].append(sample_batch[k])
+            jax.profiler.save_device_memory_profile(f"memory.prof_b{b}")
+        
 
 
         for k in temp_keys:
@@ -180,9 +194,9 @@ n,p = covid_vals.shape
 #%%
 # params
 
-n_warmup = 1000
-n_samples = 5000
-n_batches = 100
+n_warmup = 400
+n_samples = 1000
+n_batches = 10
 batch = int(n_samples/n_batches)
 eta1_0_m= 10.556
 eta1_0_s= 3.
@@ -196,7 +210,7 @@ my_model_args = {"eta1_0_m":eta1_0_m, "eta1_0_s":eta1_0_s,
 "mu_m":mu_m, "mu_s":mu_s}
 is_dense = False
 estimates_print = ["eta1_0"]
-
+#%%
 # to fix parameters:
 mu_fixed = jnp.zeros((p,))
 fix_params=True
@@ -207,6 +221,7 @@ rho_init = jnp.diag(jnp.ones((p,)))
 mu_init = jnp.zeros((p,))
 sqrt_diag_init = jnp.ones((p,))
 my_init_strategy = init_to_feasible 
+jax.profiler.save_device_memory_profile("memory.prof")
 
 #%%
 print('--------------------------------------------------------------------------------')

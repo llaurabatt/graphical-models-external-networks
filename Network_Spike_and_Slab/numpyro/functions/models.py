@@ -2,6 +2,7 @@
 import my_utils
 import jax
 import numpyro
+#%%
 # numpyro.set_platform('cpu')
 # print(jax.lib.xla_bridge.get_backend().platform)
 import jax.numpy as jnp
@@ -34,22 +35,22 @@ def glasso_repr(eta1_0_m=0., eta1_0_s=5., mu_m=0., mu_s=1., Y=None, n=None, p=No
     tril_len = tril_idx[0].shape[0]
     rho_tilde = numpyro.sample("rho_tilde", dist.Laplace(0., 1.).expand((tril_len,)))
     
-    rho_lt = numpyro.deterministic("rho_lt", rho_tilde*jnp.exp(-eta1_0))
+    # rho_lt = numpyro.deterministic("rho_lt", rho_tilde*jnp.exp(-eta1_0))
     rho_mat_tril = jnp.zeros((p,p))
-    rho_mat_tril = rho_mat_tril.at[tril_idx].set(rho_lt)
+    rho_mat_tril = rho_mat_tril.at[tril_idx].set(rho_tilde*jnp.exp(-eta1_0))
     rho = rho_mat_tril + rho_mat_tril.T + jnp.identity(p)
     
     factor("rho_factor", (ImproperUniform(constraints.corr_matrix, (), event_shape=(p,p)).log_prob(rho)).sum())
-    rho = deterministic("rho", rho)
+    # rho = deterministic("rho", rho)
 
     
-    theta = jnp.outer(sqrt_diag,sqrt_diag)*rho
-    theta = deterministic("theta", theta)
+    # theta = jnp.outer(sqrt_diag,sqrt_diag)*rho
+    # theta = deterministic("theta", theta)
 
     with plate("hist", n):
-        Y = sample("obs", dist.MultivariateNormal(mu, precision_matrix=theta), obs = Y)
+        Y = sample("obs", dist.MultivariateNormal(mu, precision_matrix=jnp.outer(sqrt_diag,sqrt_diag)*rho), obs = Y)
         
-    return {'Y':Y, 'theta_true':theta, 'mu_true':mu, 'eta1_0_true':eta1_0}
+    # return {'Y':Y, 'theta_true':theta, 'mu_true':mu, 'eta1_0_true':eta1_0}
 
 
 #%%

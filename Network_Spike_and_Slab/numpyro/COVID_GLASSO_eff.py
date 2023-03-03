@@ -58,12 +58,12 @@ covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_greaterthan50000.csv', ind
 
 n,p = covid_vals.shape
 #%%
-print("GLASSO")
+print(f"GLASSO, n {n} and p {p}")
 #%%
 ## params
 n_warmup = 1000
-n_samples = 5000
-n_batches = 10
+n_samples = 545
+n_batches = 1
 batch = int(n_samples/n_batches)
 mu_m=0.
 mu_s=1.
@@ -100,10 +100,17 @@ nuts_kernel = NUTS(my_model_run, init_strategy=my_init_strategy, dense_mass=is_d
 mcmc = MCMC(nuts_kernel, num_warmup=n_warmup, num_samples=batch)
 mcmc.run(rng_key = Key(3), Y=covid_vals, **my_model_args,
         extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state'))
-for b in range(n_batches-1):
-    sample_batch = mcmc.get_samples()
-    mcmc.post_warmup_state = mcmc.last_state
-    mcmc.run(mcmc.post_warmup_state.rng_key, Y=covid_vals, **my_model_args,
-        extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state'))  # or mcmc.run(random.PRNGKey(1))
+# for b in range(n_batches-1):
+#     sample_batch = mcmc.get_samples()
+#     mcmc.post_warmup_state = mcmc.last_state
+#     mcmc.run(mcmc.post_warmup_state.rng_key, Y=covid_vals, **my_model_args,
+#         extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state'))  # or mcmc.run(random.PRNGKey(1))
+
 
 # %%
+cpus = jax.devices("cpu")
+gpus = jax.devices("gpu")
+
+s = jax.device_put(mcmc.get_samples(), cpus[0])
+with open(data_save_path + f'GLASSO_eff.sav' , 'wb') as f:
+    pickle.dump((s), f)

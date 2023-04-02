@@ -19,9 +19,6 @@ os.chdir(_ROOT_DIR)
 sys.path.append("/home/user/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = './Network_Spike_and_Slab/numpyro/NetworkSS_results/'
-if not os.path.exists(data_save_path):
-    os.makedirs(data_save_path, mode=0o777)
 
 # load models and functions
 import models
@@ -55,5 +52,5 @@ sci_vals = sci_idx.values
 log_sci = jnp.log(sci_vals)
 sci_clean = diag_scale_network(log_A=log_sci, p=p)
 
-jnp.save(data_save_path + 'GEO_clean_629.npy', geo_clean)
-jnp.save(data_save_path + 'SCI_clean_629.npy', sci_clean)
+jnp.save(data_path + 'GEO_clean_629.npy', geo_clean)
+jnp.save(data_path + 'SCI_clean_629.npy', sci_clean)

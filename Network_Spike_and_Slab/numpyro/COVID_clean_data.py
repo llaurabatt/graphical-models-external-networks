@@ -14,11 +14,14 @@ import jax.numpy as jnp
 from numpyro.util import enable_x64
 
 # paths
-import os
-os.chdir('/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/paper_code_github/')
-sys.path.append("/Network_Spike_and_Slab/numpyro/functions")
+_ROOT_DIR = "/home/user/graphical-models-external-networks/"
+os.chdir(_ROOT_DIR)
+sys.path.append("/home/user/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
-data_save_path = './Data/COVID/Pre-processed Data/'
+data_path = './Data/COVID/Pre-processed Data/'
+data_save_path = './Network_Spike_and_Slab/numpyro/NetworkSS_results/'
+if not os.path.exists(data_save_path):
+    os.makedirs(data_save_path, mode=0o777)
 
 # load models and functions
 import models
@@ -27,9 +30,9 @@ import my_utils
 enable_x64(use_x64=True)
 print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
 
-covid_df = pd.read_csv(data_save_path + 'covid1.csv', index_col='Unnamed: 0')
-geodist = pd.read_csv(data_save_path + 'geodist1.csv', index_col='Unnamed: 0')
-sci_idx = pd.read_csv(data_save_path + 'SCI_index1.csv', index_col='Unnamed: 0')
+covid_df = pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0')
+geodist = pd.read_csv(data_path + 'geodist__629_meta.csv', index_col='Unnamed: 0')
+sci_idx = pd.read_csv(data_path + 'sci_index__629_meta.csv', index_col='Unnamed: 0')
 
 n,p = covid_df.shape
 
@@ -52,5 +55,5 @@ sci_vals = sci_idx.values
 log_sci = jnp.log(sci_vals)
 sci_clean = diag_scale_network(log_A=log_sci, p=p)
 
-jnp.save(data_save_path + 'GEO_clean.npy', geo_clean)
-jnp.save(data_save_path + 'SCI_clean.npy', sci_clean)
+jnp.save(data_save_path + 'GEO_clean_629.npy', geo_clean)
+jnp.save(data_save_path + 'SCI_clean_629.npy', sci_clean)

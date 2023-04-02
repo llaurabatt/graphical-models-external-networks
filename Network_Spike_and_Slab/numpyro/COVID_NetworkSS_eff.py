@@ -53,14 +53,11 @@ import my_utils
 enable_x64(use_x64=True)
 print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
 #%%
-# load data (!!! geo and sci have an additional p!)
-covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_greaterthan50000.csv', index_col='Unnamed: 0').values)
-geo_clean = jnp.array(pd.read_csv(data_path + 'Geodist_greaterthan50000.csv', index_col='Unnamed: 0').values)
-sci_clean = jnp.array(pd.read_csv(data_path + 'SCI_index_greaterthan50000.csv', index_col='Unnamed: 0').values)
+# load data 
+covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values)
+geo_clean = jnp.array(jnp.load(data_save_path + 'GEO_clean_629.npy'))
+sci_clean = jnp.array(jnp.load(data_save_path + 'SCI_clean_629.npy'))
 #%%
-geo_clean = geo_clean[:974, :974].copy()
-sci_clean = sci_clean[:974, :974].copy()
-
 n,p = covid_vals.shape
 print(f"NetworkSS, n {n} and p {p}")
 #%%
@@ -150,7 +147,7 @@ mcmc.run(rng_key = Key(3), Y=covid_vals, **my_model_args,
 #         extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state'))  # or mcmc.run(random.PRNGKey(1))
 
 
-# %%
+# %%git 
 cpus = jax.devices("cpu")
 gpus = jax.devices("gpu")
 

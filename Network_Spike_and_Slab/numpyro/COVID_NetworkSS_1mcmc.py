@@ -1,10 +1,10 @@
 # #%%
 # """Main script for training the model."""
-# import debugpy
-# debugpy.listen(5678)
-# print('Waiting for debugger')
-# debugpy.wait_for_client()
-# print('Debugger attached')
+import debugpy
+debugpy.listen(5678)
+print('Waiting for debugger')
+debugpy.wait_for_client()
+print('Debugger attached')
 #%%
 # imports
 import sys
@@ -41,7 +41,7 @@ os.chdir(_ROOT_DIR)
 sys.path.append("/home/user/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = '/home/user/mounted_folder/NetworkSS_results'
+data_save_path = '/home/user/mounted_folder/NetworkSS_results/'
 if not os.path.exists(data_save_path):
     os.makedirs(data_save_path, mode=0o777)
 # data_init_path = './data/sim_GLASSO_data/'
@@ -65,7 +65,7 @@ print(f"NetworkSS, n {n} and p {p}")
 #%%
 ## params
 n_warmup = 1000
-n_samples = 600
+n_samples = 700
 n_batches = 1
 batch = int(n_samples/n_batches)
 mu_m=0.

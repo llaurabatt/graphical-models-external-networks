@@ -95,6 +95,7 @@ for par in hyperpars:
         density = jnp.exp(logdensity)
         MAP_1 = x_ranges[par][jnp.argmax(density)]
         post_mean_1 = samples.mean()
+        print(f'{par} A1: MAP {MAP_1}, post. mean {post_mean_1}')
 
         ############
         samples = res[par][:,1].flatten()
@@ -107,7 +108,7 @@ for par in hyperpars:
         MAP_2 = x_ranges[par][jnp.argmax(density)]
         post_mean_2 = samples.mean()
         etas_MAPs[par] = jnp.hstack([MAP_1, MAP_2])
-        print(f'{par} P: MAP {MAP_2}, post. mean {post_mean_2}')
+        print(f'{par} A2: MAP {MAP_2}, post. mean {post_mean_2}')
     
     else:
 
@@ -121,6 +122,7 @@ for par in hyperpars:
         MAP = x_ranges[par][jnp.argmax(density)]
         post_mean = samples.mean()
         etas_MAPs[par] = MAP
+        print(f'{par} P: MAP {MAP}, post. mean {post_mean}')
 
 #%%
 ################# 2mcmc ##############

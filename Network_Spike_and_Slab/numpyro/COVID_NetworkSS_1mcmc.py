@@ -1,10 +1,10 @@
 # #%%
 # """Main script for training the model."""
-import debugpy
-debugpy.listen(5678)
-print('Waiting for debugger')
-debugpy.wait_for_client()
-print('Debugger attached')
+# import debugpy
+# debugpy.listen(5678)
+# print('Waiting for debugger')
+# debugpy.wait_for_client()
+# print('Debugger attached')
 #%%
 # imports
 import sys
@@ -56,7 +56,7 @@ enable_x64(use_x64=True)
 print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
 #%%
 # mcmc1_init()
-for c in np.arange(3,31):
+for c in np.arange(32,33):
     mcmc1_add(checkpoint=c, n_warmup=50, n_samples=400)
 
 

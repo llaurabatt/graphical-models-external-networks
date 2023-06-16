@@ -32,39 +32,39 @@ if not os.path.exists(data_save_path):
 
 
 # %%
-# i = 0
-# for f_ix, f in enumerate(sorted(os.listdir(data_save_path))):
-#     if '1mcmc' in f:
-#         print(f)
-#         if i==0:
-#             with open(data_save_path + f, 'rb') as fr:
-#                 res = pickle.load(fr)
-#             samples = {k:[] for k in res.keys()}
-#         with open(data_save_path + f, 'rb') as fr:
-#             res = pickle.load(fr)
-#         for k in res.keys():
-#             samples[k].append(res[k])
-#         i += 1
+i = 0
+for f_ix, f in enumerate(sorted(os.listdir(data_save_path))):
+    if '1mcmc' in f:
+        print(f)
+        if i==0:
+            with open(data_save_path + f, 'rb') as fr:
+                res = pickle.load(fr)
+            samples = {k:[] for k in res.keys()}
+        with open(data_save_path + f, 'rb') as fr:
+            res = pickle.load(fr)
+        for k in res.keys():
+            samples[k].append(res[k])
+        i += 1
 
-# # %%
-# with open(data_save_path + f'NetworkSS_1mcmc_p629_s4100_aggregate0.sav' , 'wb') as f:
-#     pickle.dump((samples), f)
-# # %%
-
-with open(data_save_path + 'NetworkSS_1mcmc_p629_s4100_aggregate0.sav', 'rb') as fr:
-    samples = pickle.load(fr)
-# # %%
-sampless = {}
-for k,v in samples.items():
-    print(k)
-    try:
-        sampless[k] = np.vstack(np.array(v, dtype=object))
-    except:
-        sampless[k] = np.vstack(np.array([s[:,None] for s in v], dtype=object))
-del samples
-# sampless = {k:np.vstack(np.array(v, dtype=object)) for k,v in samples.items()}
 # %%
-tot_samples = sampless[k].shape[0]
-print(tot_samples)
-with open(data_save_path + f'NetworkSS_1mcmc_p629_s{tot_samples}_aggregate.sav' , 'wb') as f:
-    pickle.dump((sampless), f)
+with open(data_save_path + f'NetworkSS_1mcmc_p629_s4100_aggregate0.sav' , 'wb') as f:
+    pickle.dump((samples), f)
+%%
+
+# with open(data_save_path + 'NetworkSS_1mcmc_p629_s4100_aggregate0.sav', 'rb') as fr:
+#     samples = pickle.load(fr)
+# # # %%
+# sampless = {}
+# for k,v in samples.items():
+#     print(k)
+#     try:
+#         sampless[k] = np.vstack(np.array(v, dtype=object))
+#     except:
+#         sampless[k] = np.vstack(np.array([s[:,None] for s in v], dtype=object))
+# del samples
+# # sampless = {k:np.vstack(np.array(v, dtype=object)) for k,v in samples.items()}
+# # %%
+# tot_samples = sampless[k].shape[0]
+# print(tot_samples)
+# with open(data_save_path + f'NetworkSS_1mcmc_p629_s{tot_samples}_aggregate.sav' , 'wb') as f:
+#     pickle.dump((sampless), f)

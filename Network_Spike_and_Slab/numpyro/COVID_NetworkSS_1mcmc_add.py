@@ -50,6 +50,8 @@ if not os.path.exists(data_save_path):
 # load models and functions
 import models
 import my_utils
+import imp
+imp.reload(models)
 
 enable_x64(use_x64=True)
 print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
@@ -93,11 +95,11 @@ def mcmc1_add(checkpoint, n_warmup, n_samples):
     mu_m=0.
     mu_s=1.
     verbose = True
-    my_model = models.NetworkSS_repr_etaRepr
+    my_model = models.NetworkSS_repr_etaRepr_loglikRepr #models.NetworkSS_repr_etaRepr
     is_dense=False
     #%%
     if (checkpoint-1)==0:
-        with open(data_save_path + f'NetworkSS_1mcmc_p629_s1500.sav', 'rb') as fr:
+        with open(data_save_path + f'NetworkSS_eff_p629_w1000_s500.sav', 'rb') as fr:
             res = jax.device_put(pickle.load(fr), jax.devices("cpu")[0])
     else:
         print(f'checkpoint {checkpoint}')

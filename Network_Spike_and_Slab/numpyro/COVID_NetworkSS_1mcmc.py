@@ -38,15 +38,14 @@ from COVID_NetworkSS_1mcmc_init import mcmc1_init
 from COVID_NetworkSS_1mcmc_add import mcmc1_add
 #%%
 # paths
-_ROOT_DIR = "/home/user/graphical-models-external-networks/"
+_ROOT_DIR = "/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-models-external-networks/"
 os.chdir(_ROOT_DIR)
-sys.path.append("/home/user/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
+sys.path.append("/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = '/home/user/mounted_folder/NetworkSS_results/'
+data_save_path = '/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/NetworkSS_results/'
 if not os.path.exists(data_save_path):
     os.makedirs(data_save_path, mode=0o777)
-# data_init_path = './data/sim_GLASSO_data/'
 #%%
 # load models and functions
 import models
@@ -55,8 +54,9 @@ import my_utils
 enable_x64(use_x64=True)
 print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
 #%%
-# mcmc1_init()
-for c in np.arange(32,33):
-    mcmc1_add(checkpoint=c, n_warmup=50, n_samples=400)
+thinning = 10
+mcmc1_init(thinning=thinning)
+for c in np.arange(1,3):
+    mcmc1_add(checkpoint=c, n_warmup=50, n_samples=400, thinning=thinning)
 
 

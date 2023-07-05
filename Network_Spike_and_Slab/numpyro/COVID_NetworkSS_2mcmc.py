@@ -9,15 +9,17 @@ print('Debugger attached')
 # imports
 import sys
 import os
+import re
 #%%
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import pickle
+from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import KernelDensity
 import jax
 import numpyro
-numpyro.set_platform('gpu')
+numpyro.set_platform('cpu')
 print(jax.lib.xla_bridge.get_backend().platform)
 import jax.numpy as jnp
 from numpyro.infer import MCMC, NUTS 
@@ -35,19 +37,23 @@ from numpyro.distributions import ImproperUniform, constraints
 import numpyro.infer.util 
 from numpyro.primitives import deterministic
 #%%
-cpus = jax.devices("cpu")
-gpus = jax.devices("gpu")
+cpus = gpus = jax.devices("cpu")
+# gpus = jax.devices("gpu")
+thinning = 10
+search_MAP_best_params = True
 
 # paths
-_ROOT_DIR = "/home/user/graphical-models-external-networks/"
+# _ROOT_DIR = "/home/user/graphical-models-external-networks/"
+_ROOT_DIR = "/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-models-external-networks/"
 os.chdir(_ROOT_DIR)
-sys.path.append("/home/user/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
+# sys.path.append("/home/user/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
+sys.path.append("/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = '/home/user/mounted_folder/NetworkSS_results/'
+# data_save_path = '/home/user/mounted_folder/NetworkSS_results/'
+data_save_path = '/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/NetworkSS_results/'
 if not os.path.exists(data_save_path):
     os.makedirs(data_save_path, mode=0o777)
-# data_init_path = './data/sim_GLASSO_data/'
 #%%
 # load models and functions
 import models
@@ -56,39 +62,83 @@ import my_utils
 enable_x64(use_x64=True)
 print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
 #%%
-################## MAP ###############
-hyperpars = ['eta0_0', 'eta0_coefs', 'eta1_0', 'eta1_coefs', 'eta2_0', 'eta2_coefs']
+# load data 
+# covid_vals = jax.device_put(jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values), jax.devices("cpu")[0])
+covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values)
+geo_clean = jnp.array(jnp.load(data_path + 'GEO_clean_629.npy'))
+sci_clean = jnp.array(jnp.load(data_path + 'SCI_clean_629.npy'))
 
+#%%
+covid_vals = covid_vals[:,:20].copy()
+geo_clean = geo_clean[:20, :20].copy()
+sci_clean = sci_clean[:20, :20].copy()
+#%%
+n,p = covid_vals.shape
+print(f"NetworkSS, n {n} and p {p}")
+#%%
+################## MAP ###############
+for f in os.listdir(data_save_path):
+    if 'aggregate.sav' in f: 
+        print(f'Init 2mcmc from {f}')
+        with open(data_save_path + f, 'rb') as fr:
+            res = jax.device_put(pickle.load(fr), cpus[0])
+
+#%% 
 # Empircal Bayes marginal MAP estimates
 
-best_params = {'eta0_0':{'bandwidth': 0.1, 'kernel': 'linear'}, 
-                       'eta0_coefs':{'bandwidth': 0.1, 'kernel': 'linear'},
-                       'eta1_0':{'bandwidth': 0.3088843596477481, 'kernel': 'linear'}, 
-                       'eta1_coefs':{'bandwidth': 0.13257113655901093, 'kernel': 'linear'}, 
-                       'eta2_0':{'bandwidth': 1.2648552168552958, 'kernel': 'linear'}, 
-                       'eta2_coefs':{'bandwidth': 0.2559547922699536, 'kernel': 'gaussian'}}
+hyperpars = ['eta0_0', 'eta0_coefs', 'eta1_0', 'eta1_coefs', 'eta2_0', 'eta2_coefs']
 
-#x_ranges = {'eta0_0':np.linspace(-1, 1, 1000), 'eta0_coefs':np.linspace(-1, 1, 1000),
-x_ranges = {'eta0_0':np.linspace(-0.2, 0.2, 1000), 'eta0_coefs':np.linspace(-0.2, 0.2, 1000),
-           'eta1_0':np.linspace(-7, -2, 1000), 'eta1_coefs':np.linspace(-2, 1, 1000),
-           'eta2_0':np.linspace(-10, 7, 1000), 'eta2_coefs':np.linspace(-3, 7, 1000)}
+if search_MAP_best_params:
+    print('Search for MAP best params...')
+    bandwidths = 10 ** np.linspace(-1, 1, 50)
+    kernels = ['gaussian', 'exponential', 'linear',]
+
+    best_params = {}
+    for par in hyperpars:
+        print(par)
+        if 'coefs' in par:
+            my_kern = KernelDensity()
+            grid_model = GridSearchCV(my_kern, {'bandwidth': bandwidths, 'kernel':kernels})
+            grid_model.fit(res[par][:,0][:,None])
+            best_params[par + '_0'] = grid_model.best_params_
+
+            my_kern = KernelDensity()
+            grid_model = GridSearchCV(my_kern, {'bandwidth': bandwidths, 'kernel':kernels})
+            grid_model.fit(res[par][:,1][:,None])
+            best_params[par + '_1'] = grid_model.best_params_
+        else:
+            my_kern = KernelDensity()
+            grid_model = GridSearchCV(my_kern, {'bandwidth': bandwidths, 'kernel':kernels})
+            grid_model.fit(res[par])
+            best_params[par] = grid_model.best_params_
+    with open(data_save_path + f'MAP_best_params_p{p}.sav' , 'wb') as f:
+        pickle.dump((best_params), f)
+            
+else:
+    try:
+        with open(data_save_path + 'MAP_best_params_p{p}.sav', 'rb') as fr:
+            best_params = pickle.load(fr)
+    except:
+        best_params = {'eta0_0':{'bandwidth': 0.1, 'kernel': 'linear'}, 
+                        'eta0_coefs':{'bandwidth': 0.1, 'kernel': 'linear'},
+                        'eta1_0':{'bandwidth': 0.3088843596477481, 'kernel': 'linear'}, 
+                        'eta1_coefs_0':{'bandwidth': 0.13257113655901093, 'kernel': 'linear'}, 
+                        'eta1_coefs_1':{'bandwidth': 0.13257113655901093, 'kernel': 'linear'}, 
+                        'eta2_0':{'bandwidth': 1.2648552168552958, 'kernel': 'linear'}, 
+                        'eta2_coefs':{'bandwidth': 0.2559547922699536, 'kernel': 'gaussian'}}
+
+x_ranges = {'eta0_0':np.linspace(-10, 1, 10000), 'eta0_coefs':np.linspace(-4, 5, 10000),
+           'eta1_0':np.linspace(-10, 5, 10000), 'eta1_coefs':np.linspace(-5, 5, 10000),
+           'eta2_0':np.linspace(-20, 0, 10000), 'eta2_coefs':np.linspace(-5, 15, 10000)}
 #%%         
-etas_MAPs = {'eta0_0':0, 
-                       'eta0_coefs':0,
-                       'eta1_0':0, 
-                       'eta1_coefs':0, 
-                       'eta2_0':0, 
-                       'eta2_coefs':0}
+etas_MAPs = {k:0 for k in hyperpars}
 
-with open(data_save_path + f'NetworkSS_1mcmc_p629_s1500.sav', 'rb') as fr:
-    res = jax.device_put(pickle.load(fr), jax.devices("cpu")[0])
-    # res = pickle.load(fr)
-#%% 
+
 for par in hyperpars:
     if 'coefs' in par:
         samples = res[par][:,0].flatten()
 
-        kde = KernelDensity(**best_params[par])
+        kde = KernelDensity(**best_params[par + '_0'])
         kde.fit(samples[:, None])
 
         logdensity = kde.score_samples(x_ranges[par][:, None])
@@ -100,7 +150,7 @@ for par in hyperpars:
         ############
         samples = res[par][:,1].flatten()
 
-        kde = KernelDensity(**best_params[par])
+        kde = KernelDensity(**best_params[par+ '_1'])
         kde.fit(samples[:, None])
 
         logdensity = kde.score_samples(x_ranges[par][:, None])
@@ -130,11 +180,11 @@ for par in hyperpars:
 
 def SVI_init_strategy_golazo_ss(A_list, mcmc_res, fixed_params_dict):
 
-    all_chains = jnp.hstack([mcmc_res['eta0_0'][:,None], 
+    all_chains = jnp.hstack([mcmc_res['eta0_0'], #[:,None], 
                              mcmc_res['eta0_coefs'],
-                             mcmc_res['eta1_0'][:,None], 
+                             mcmc_res['eta1_0'], #[:,None], 
                              mcmc_res['eta1_coefs'],
-                            mcmc_res['eta2_0'][:,None], 
+                             mcmc_res['eta2_0'], #[:,None], 
                              mcmc_res['eta2_coefs']])
 
     eta0_0_MAP = fixed_params_dict["eta0_0"]
@@ -170,30 +220,23 @@ def SVI_init_strategy_golazo_ss(A_list, mcmc_res, fixed_params_dict):
     w_slab = (1+jnp.exp(-eta2_0_MAP-A_tril_mean2_MAP))**(-1)
     
     u_init = mcmc_res['u'][jnp.argmin(dists)]
+    u_init = jnp.array(u_init, dtype=jnp.float64)
     is_spike = my_utils.my_sigmoid(u_init, beta=100., alpha=w_slab)
 
     rho_tilde_init = (rho_lt_init-mean_slab*(1-is_spike))/(is_spike*scale_spike_fixed + (1-is_spike)*scale_slab)
     sqrt_diag_init = mcmc_res['sqrt_diag'][jnp.argmin(dists)]
+    sqrt_diag_init = jnp.array(sqrt_diag_init, dtype=jnp.float64)
 
     rho_lt_MAP = rho_tilde_init*is_spike*scale_spike_fixed + (1-is_spike)*(rho_tilde_init*scale_slab + mean_slab)
     rho_mat_tril = jnp.zeros((p,p))
     rho_mat_tril = rho_mat_tril.at[tril_idx].set(rho_lt_MAP)
     rho = rho_mat_tril + rho_mat_tril.T + jnp.identity(p)
-    rho_cpu = jax.device_put(rho, jax.devices("cpu")[0])
-    enter = jax.device_put(jnp.all(jnp.linalg.eigvals(rho_cpu) > 0), jax.devices("cpu")[0])
+    rho_cpu = jax.device_put(rho, cpus[0])
+    enter = jax.device_put(jnp.all(jnp.linalg.eigvals(rho_cpu) > 0), cpus[0])
     print(f'Is rho init p.d.:{enter}')
     
     return u_init, rho_tilde_init, sqrt_diag_init
-#%%
-# load data 
-# covid_vals = jax.device_put(jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values), jax.devices("cpu")[0])
-covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values)
-geo_clean = jnp.array(jnp.load(data_path + 'GEO_clean_629.npy'))
-sci_clean = jnp.array(jnp.load(data_path + 'SCI_clean_629.npy'))
-#%%
-n,p = covid_vals.shape
-print(f"NetworkSS, n {n} and p {p}")
-#%%
+
 
 #%%
 ## params
@@ -251,9 +294,9 @@ my_model_args = {"A_list":A_list, "eta0_0_m":eta0_0_m, "eta0_0_s":eta0_0_s,
 u_init_cpu, rho_tilde_init_cpu, sqrt_diag_init_cpu = SVI_init_strategy_golazo_ss(A_list=A_list, mcmc_res=res, 
                                                                  fixed_params_dict=fixed_params_dict)
 
-u_init = jax.device_put(u_init_cpu, jax.devices("gpu")[0])
-rho_tilde_init = jax.device_put(rho_tilde_init_cpu, jax.devices("gpu")[0])
-sqrt_diag_init = jax.device_put(sqrt_diag_init_cpu, jax.devices("gpu")[0])
+u_init = jax.device_put(u_init_cpu, gpus[0])
+rho_tilde_init = jax.device_put(rho_tilde_init_cpu, gpus[0])
+sqrt_diag_init = jax.device_put(sqrt_diag_init_cpu, gpus[0])
 #%%
 my_init_strategy = init_to_value(values={'u':u_init, 'rho_tilde':rho_tilde_init,'sqrt_diag':sqrt_diag_init})
 
@@ -279,8 +322,13 @@ mcmc.run(rng_key = Key(5), Y=covid_vals, **my_model_args,
 # %%git 
 
 
+mask = (jnp.arange(n_samples)%thinning==0)
 s = jax.device_put(mcmc.get_samples(), cpus[0])
+# why doesn't the following work with dictionary comprehension?
+ss = {}
+for k,v in s.items():
+    ss[k] = v[mask]
 f_dict = jax.device_put(fixed_params_dict, cpus[0])
-s.update({'fixed_params_dict':f_dict})
-with open(data_save_path + f'NetworkSS_2mcmc_p{p}_s{n_warmup+n_samples}.sav' , 'wb') as f:
-    pickle.dump((s), f)
+ss.update({'fixed_params_dict':f_dict})
+with open(data_save_path + f'NetworkSS_2mcmc_p{p}_w{n_warmup}_s{n_samples}.sav' , 'wb') as f:
+    pickle.dump((ss), f)

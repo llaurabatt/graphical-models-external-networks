@@ -18,7 +18,7 @@ import pickle
 from sklearn.neighbors import KernelDensity
 import jax
 import numpyro
-numpyro.set_platform('gpu')
+numpyro.set_platform('cpu')
 print(jax.lib.xla_bridge.get_backend().platform)
 import jax.numpy as jnp
 from numpyro.infer import MCMC, NUTS 
@@ -35,17 +35,22 @@ import numpyro.distributions as dist
 from numpyro.distributions import ImproperUniform, constraints
 import numpyro.infer.util 
 from numpyro.primitives import deterministic
+from typing import Optional
+
 #%%
 # paths
-_ROOT_DIR = "/home/user/graphical-models-external-networks/"
+# _ROOT_DIR = "/home/user/graphical-models-external-networks/"
+_ROOT_DIR = "/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-models-external-networks/"
 os.chdir(_ROOT_DIR)
-sys.path.append("/home/user/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
+# sys.path.append("/home/user/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
+sys.path.append("/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = '/home/user/mounted_folder/NetworkSS_results/'
+# data_save_path = '/home/user/mounted_folder/NetworkSS_results/'
+data_save_path = '/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/NetworkSS_results/'
 if not os.path.exists(data_save_path):
     os.makedirs(data_save_path, mode=0o777)
-# data_init_path = './data/sim_GLASSO_data/'
+
 #%%
 # load models and functions
 import models
@@ -55,8 +60,8 @@ imp.reload(models)
 
 enable_x64(use_x64=True)
 print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
-cpus = jax.devices("cpu")
-gpus = jax.devices("gpu")
+cpus = gpus = jax.devices("cpu")
+# gpus = jax.devices("gpu")
 #%%
 def purge(dir, checkpoint, curr_no_s):
     for f in os.listdir(dir):
@@ -77,11 +82,21 @@ def to_open(dir, checkpoint):
     return no_s, no_w
 
 #%%
-def mcmc1_add(checkpoint, n_warmup, n_samples):
+def mcmc1_add(
+        checkpoint, 
+        n_warmup, 
+        n_samples,
+        thinning:Optional[int]=0,
+        ):
     # load data 
     covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values)
     geo_clean = jnp.array(jnp.load(data_path + 'GEO_clean_629.npy'))
     sci_clean = jnp.array(jnp.load(data_path + 'SCI_clean_629.npy'))
+    #%%
+    covid_vals = covid_vals[:,:20].copy()
+    geo_clean = geo_clean[:20, :20].copy()
+    sci_clean = sci_clean[:20, :20].copy()
+
     #%%
     n,p = covid_vals.shape
     print(f"NetworkSS, n {n} and p {p}")
@@ -99,12 +114,12 @@ def mcmc1_add(checkpoint, n_warmup, n_samples):
     is_dense=False
     #%%
     if (checkpoint-1)==0:
-        with open(data_save_path + f'NetworkSS_eff_p629_w1000_s500.sav', 'rb') as fr:
+        with open(data_save_path + f'NetworkSS_1mcmc_p{p}_w1000_s500_0.sav', 'rb') as fr:
             res = jax.device_put(pickle.load(fr), jax.devices("cpu")[0])
     else:
         print(f'checkpoint {checkpoint}')
         no_s, no_w = to_open(dir=data_save_path, checkpoint=checkpoint-1)
-        filename = data_save_path + fr'NetworkSS_1mcmc_p629_w{no_w}_s{no_s}_{checkpoint-1}.sav'
+        filename = data_save_path + fr'NetworkSS_1mcmc_p{p}_w{no_w}_s{no_s}_{checkpoint-1}.sav'
         print(f'init from {filename}')
         with open(filename, 'rb') as fr:
             res = jax.device_put(pickle.load(fr), jax.devices("cpu")[0])
@@ -176,9 +191,15 @@ def mcmc1_add(checkpoint, n_warmup, n_samples):
     #         extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state'))  # or mcmc.run(random.PRNGKey(1))
 
 
-    # %%git 
+    # %%
 
+    mask = (jnp.arange(n_samples)%thinning==0)
     s = jax.device_put(mcmc.get_samples(), cpus[0])
-    with open(data_save_path + f'NetworkSS_1mcmc_p{629}_w{n_warmup}_s{n_samples}_{checkpoint}.sav' , 'wb') as f:
-        pickle.dump((s), f)
+    # why doesn't the following work with dictionary comprehension?
+    ss = {}
+    for k,v in s.items():
+        ss[k] = v[mask]
+    with open(data_save_path + f'NetworkSS_1mcmc_p{p}_w{n_warmup}_s{n_samples}_{checkpoint}.sav' , 'wb') as f:
+        pickle.dump((ss), f)
+
     purge(dir=data_save_path, checkpoint=checkpoint, curr_no_s=n_samples)

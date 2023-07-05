@@ -170,7 +170,7 @@ def NetworkSS_repr(A_list, eta0_0_m=0., eta0_0_s=5., eta1_0_m=0., eta1_0_s=5., e
     
     
     u = sample("u", dist.Uniform(0.0, 1.0).expand((tril_len, )))
-    is_spike = my_utils.my_sigmoid(u, beta=500., alpha=w_slab)
+    is_spike = my_utils.my_sigmoid(u, beta=100., alpha=w_slab)
     
     # corr mat
     rho_tilde = numpyro.sample("rho_tilde", dist.Laplace(0., 1.).expand((tril_len,)))

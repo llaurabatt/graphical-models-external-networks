@@ -57,17 +57,18 @@ print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
 cpus = jax.devices("cpu")
 # gpus = jax.devices("gpu")
 #%%
-def mcmc1_init(
-        thinning:Optional[int]=0,
+def mcmc1_init(covid_vals,
+               A_list,
+               thinning:Optional[int]=0,
         ):
-    # load data 
-    covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values)
-    geo_clean = jnp.array(jnp.load(data_path + 'GEO_clean_629.npy'))
-    sci_clean = jnp.array(jnp.load(data_path + 'SCI_clean_629.npy'))
-    #%%
-    covid_vals = covid_vals[:,:20].copy()
-    geo_clean = geo_clean[:20, :20].copy()
-    sci_clean = sci_clean[:20, :20].copy()
+    # # load data 
+    # covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values)
+    # geo_clean = jnp.array(jnp.load(data_path + 'GEO_clean_629.npy'))
+    # sci_clean = jnp.array(jnp.load(data_path + 'SCI_clean_629.npy'))
+    # #%%
+    # covid_vals = covid_vals[:,:20].copy()
+    # geo_clean = geo_clean[:20, :20].copy()
+    # sci_clean = sci_clean[:20, :20].copy()
 
     #%%
     n,p = covid_vals.shape
@@ -131,7 +132,7 @@ def mcmc1_init(
 
 
 
-    A_list = [geo_clean, sci_clean]
+    # A_list = [geo_clean, sci_clean]
     my_model_args = {"A_list":A_list, "eta0_0_m":eta0_0_m, "eta0_0_s":eta0_0_s, 
                 "eta0_coefs_m":eta0_coefs_m, "eta0_coefs_s":eta0_coefs_s,
                 "eta1_0_m":eta1_0_m, "eta1_0_s":eta1_0_s, 
@@ -168,5 +169,5 @@ def mcmc1_init(
     for k,v in s.items():
         ss[k] = v[mask]
 
-    with open(data_save_path + f'NetworkSS_1mcmc_p{p}_w{n_warmup}_s{n_samples}_0.sav' , 'wb') as f:
+    with open(data_save_path + f'NetworkSS_1mcmc_p{p}_w{n_warmup}_s{n_samples}_CP{n_samples}.sav' , 'wb') as f:
         pickle.dump((ss), f)

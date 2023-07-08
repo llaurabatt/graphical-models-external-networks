@@ -63,39 +63,37 @@ print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
 cpus = gpus = jax.devices("cpu")
 # gpus = jax.devices("gpu")
 #%%
-def purge(dir, checkpoint, curr_no_s):
-    for f in os.listdir(dir):
-        if re.search(fr'.*_{checkpoint}\.sav$', f):
-            no = re.search(r'(_s)\d+', f)[0][2:]
-            if int(no) < curr_no_s:
-                os.remove(os.path.join(dir, f))
 
-def to_open(dir, checkpoint):
-    nos = {}
+def get_init_file(dir, checkpoint):
+    '''Retrieve init file'''
+    CPs = []
     for f in os.listdir(dir):
-        if re.search(fr'.*_{checkpoint}\.sav$', f):
-            no_w = int(re.search(r'(_w)\d+', f)[0][2:])
-            no_s = int(re.search(r'(_s)\d+', f)[0][2:])
-            nos[no_s] = no_w
-    no_s = max(nos, key=int)
-    no_w = nos[no_s]
-    return no_s, no_w
+        if re.search(r'(_CP)\d+', f):
+            CP = int(re.search(r'(_CP)\d+', f)[0][3:])
+            CPs.append(CP)
+    CP_max = max(CPs)
+    for f in os.listdir(dir):
+        if re.search(fr'.*_CP{CP_max}\.sav$', f):
+            return f, CP_max
+
 
 #%%
 def mcmc1_add(
+        covid_vals,
+        A_list,
         checkpoint, 
         n_warmup, 
         n_samples,
         thinning:Optional[int]=0,
         ):
-    # load data 
-    covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values)
-    geo_clean = jnp.array(jnp.load(data_path + 'GEO_clean_629.npy'))
-    sci_clean = jnp.array(jnp.load(data_path + 'SCI_clean_629.npy'))
-    #%%
-    covid_vals = covid_vals[:,:20].copy()
-    geo_clean = geo_clean[:20, :20].copy()
-    sci_clean = sci_clean[:20, :20].copy()
+    # # load data 
+    # covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values)
+    # geo_clean = jnp.array(jnp.load(data_path + 'GEO_clean_629.npy'))
+    # sci_clean = jnp.array(jnp.load(data_path + 'SCI_clean_629.npy'))
+    # #%%
+    # covid_vals = covid_vals[:,:20].copy()
+    # geo_clean = geo_clean[:20, :20].copy()
+    # sci_clean = sci_clean[:20, :20].copy()
 
     #%%
     n,p = covid_vals.shape
@@ -113,16 +111,11 @@ def mcmc1_add(
     my_model = models.NetworkSS_repr_etaRepr_loglikRepr #models.NetworkSS_repr_etaRepr
     is_dense=False
     #%%
-    if (checkpoint-1)==0:
-        with open(data_save_path + f'NetworkSS_1mcmc_p{p}_w1000_s500_0.sav', 'rb') as fr:
-            res = jax.device_put(pickle.load(fr), jax.devices("cpu")[0])
-    else:
-        print(f'checkpoint {checkpoint}')
-        no_s, no_w = to_open(dir=data_save_path, checkpoint=checkpoint-1)
-        filename = data_save_path + fr'NetworkSS_1mcmc_p{p}_w{no_w}_s{no_s}_{checkpoint-1}.sav'
-        print(f'init from {filename}')
-        with open(filename, 'rb') as fr:
-            res = jax.device_put(pickle.load(fr), jax.devices("cpu")[0])
+    print(f'Checkpoint {checkpoint}')
+    filename, CP_int = get_init_file(dir=data_save_path, checkpoint=checkpoint)
+    print(f'Init from {filename}')
+    with open(data_save_path + filename, 'rb') as fr:
+        res = jax.device_put(pickle.load(fr), jax.devices("cpu")[0])
 
     #%%
     ## first element for p=10, second element for p=50
@@ -163,7 +156,7 @@ def mcmc1_add(
 
 
 
-    A_list = [geo_clean, sci_clean]
+    # A_list = [geo_clean, sci_clean]
     my_model_args = {"A_list":A_list, "eta0_0_m":eta0_0_m, "eta0_0_s":eta0_0_s, 
                 "eta0_coefs_m":eta0_coefs_m, "eta0_coefs_s":eta0_coefs_s,
                 "eta1_0_m":eta1_0_m, "eta1_0_s":eta1_0_s, 
@@ -199,7 +192,6 @@ def mcmc1_add(
     ss = {}
     for k,v in s.items():
         ss[k] = v[mask]
-    with open(data_save_path + f'NetworkSS_1mcmc_p{p}_w{n_warmup}_s{n_samples}_{checkpoint}.sav' , 'wb') as f:
+    with open(data_save_path + f'NetworkSS_1mcmc_p{p}_w{n_warmup}_s{n_samples}_CP{checkpoint}.sav' , 'wb') as f:
         pickle.dump((ss), f)
 
-    purge(dir=data_save_path, checkpoint=checkpoint, curr_no_s=n_samples)

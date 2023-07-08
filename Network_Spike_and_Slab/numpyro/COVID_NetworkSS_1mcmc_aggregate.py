@@ -10,6 +10,7 @@ print('Debugger attached')
 import sys
 import os
 import re
+from absl import flags
 #%%
 import numpy as np
 import pandas as pd
@@ -33,9 +34,13 @@ data_save_path = '/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/NetworkSS_resu
 if not os.path.exists(data_save_path):
     os.makedirs(data_save_path, mode=0o777)
 
-
+# define flags
+FLAGS = flags.FLAGS
+flags.DEFINE_integer('p', None, 'dimension of each observation')
+flags.mark_flags_as_required(['p'])
+FLAGS(sys.argv)
 # %%
-p = 20
+p = FLAGS.p
 i = 0
 for f_ix, f in enumerate(sorted(os.listdir(data_save_path))):
     if (('1mcmc' in f) and ('aggregate' not in f)):

@@ -9,6 +9,8 @@
 # imports
 import sys
 import os
+from absl import flags
+import re
 #%%
 import numpy as np
 import pandas as pd
@@ -51,12 +53,72 @@ if not os.path.exists(data_save_path):
 import models
 import my_utils
 
+# define flags
+FLAGS = flags.FLAGS
+flags.DEFINE_integer('thinning', 0, 'Thinning between MCMC samples.')
+flags.DEFINE_integer('n_samples', 0, 'Number of total samples to run (excluding warmup).')
+flags.DEFINE_string('Y', 'COVID_629_meta.csv', 'Name of file where data for dependent variable is stored.')
+flags.DEFINE_multi_string('network_list', ['GEO_clean_629.npy', 'SCI_clean_629.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
+flags.mark_flags_as_required(['n_samples'])
+FLAGS(sys.argv)
+
+
 enable_x64(use_x64=True)
 print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
 #%%
-thinning = 10
-mcmc1_init(thinning=thinning)
-for c in np.arange(1,3):
-    mcmc1_add(checkpoint=c, n_warmup=50, n_samples=400, thinning=thinning)
+n_samples = FLAGS.n_samples
+thinning = FLAGS.thinning
+covid_vals_name = FLAGS.Y
+network_names = FLAGS.network_list
+print(network_names)
+# load data
+covid_vals = jnp.array(pd.read_csv(data_path + covid_vals_name, index_col='Unnamed: 0').values)
+geo_clean = jnp.array(jnp.load(data_path + network_names[0]))
+sci_clean = jnp.array(jnp.load(data_path + network_names[1]))
+
+covid_vals = covid_vals[:,:20].copy()
+geo_clean = geo_clean[:20, :20].copy()
+sci_clean = sci_clean[:20, :20].copy()
+A_list = [geo_clean, sci_clean]
+
+
+
+def get_init_file(dir, checkpoint):
+    '''Retrieve init file'''
+    CPs = []
+    for f in os.listdir(dir):
+        if re.search(r'(_CP)\d+', f):
+            CP = int(re.search(r'(_CP)\d+', f)[0][3:])
+            CPs.append(CP)
+    try:
+        CP_max = max(CPs)
+        for f in os.listdir(dir):
+            if re.search(fr'.*_CP{CP_max}\.sav$', f):
+                return f, CP_max
+    except:
+        pass
+
+try:        
+    filename, CP_init = get_init_file(dir=data_save_path, checkpoint=n_samples)
+except:
+    CP_init = 0
+
+if CP_init >= n_samples:
+    print(f'Checkpoint at {CP_init} number of samples already exists.')
+    sys.exit()
+elif (CP_init < 500):
+    mcmc1_init(thinning=thinning, covid_vals=covid_vals, A_list=A_list)
+    n_rounds = (n_samples-500)/400
+    batches = [400]*int(n_rounds) + [(n_samples-500)%400]
+    for s_ix, s in enumerate(batches):
+        mcmc1_add(thinning=thinning, covid_vals=covid_vals, A_list=A_list,
+              checkpoint= 500 + sum(batches[:s_ix+1]) , n_warmup=50, n_samples=s)
+else:
+    n_rounds = (n_samples-CP_init)/400
+    batches = [400]*int(n_rounds) + [(n_samples-CP_init)%400]
+    for s_ix, s in enumerate(batches):
+        mcmc1_add(thinning=thinning, covid_vals=covid_vals, A_list=A_list,
+              checkpoint=CP_init + sum(batches[:s_ix+1]), n_warmup=50, n_samples=s)
+ 
 
 

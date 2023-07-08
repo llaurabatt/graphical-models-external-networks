@@ -41,19 +41,23 @@ flags.mark_flags_as_required(['p'])
 FLAGS(sys.argv)
 # %%
 p = FLAGS.p
-i = 0
-for f_ix, f in enumerate(sorted(os.listdir(data_save_path))):
-    if (('1mcmc' in f) and ('aggregate' not in f)):
-        print(f)
-        if i==0:
-            with open(data_save_path + f, 'rb') as fr:
-                res = pickle.load(fr)
-            samples = {k:[] for k in res.keys()}
-        with open(data_save_path + f, 'rb') as fr:
+
+CP_files = {}
+for f in os.listdir(data_save_path):
+    if re.search(r'(_CP)\d+', f):
+        CP = int(re.search(r'(_CP)\d+', f)[0][3:])
+        CP_files[CP] = f
+
+for cp_ix, (k,v) in enumerate(sorted(CP_files.items())):
+    print(v)
+    if cp_ix==0:
+        with open(data_save_path + v, 'rb') as fr:
             res = pickle.load(fr)
-        for k in res.keys():
-            samples[k].append(res[k])
-        i += 1
+        samples = {k:[] for k in res.keys()}
+    with open(data_save_path + v, 'rb') as fr:
+        res = pickle.load(fr)
+    for k in res.keys():
+        samples[k].append(res[k])
 
 # %%
 # with open(data_save_path + f'NetworkSS_1mcmc_p{p}_s4100_aggregate0.sav' , 'wb') as f:
@@ -65,7 +69,7 @@ for f_ix, f in enumerate(sorted(os.listdir(data_save_path))):
 # # %%
 sampless = {}
 for k,v in samples.items():
-    print(k)
+    # print(k)
     try:
         sampless[k] = np.vstack(np.array(v, dtype=object))
     except:

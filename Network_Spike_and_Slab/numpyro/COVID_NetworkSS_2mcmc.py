@@ -10,6 +10,7 @@ print('Debugger attached')
 import sys
 import os
 import re
+from absl import flags
 #%%
 import numpy as np
 import pandas as pd
@@ -39,8 +40,6 @@ from numpyro.primitives import deterministic
 #%%
 cpus = gpus = jax.devices("cpu")
 # gpus = jax.devices("gpu")
-thinning = 10
-search_MAP_best_params = True
 
 # paths
 # _ROOT_DIR = "/home/user/graphical-models-external-networks/"
@@ -59,19 +58,40 @@ if not os.path.exists(data_save_path):
 import models
 import my_utils
 
+# define flags
+FLAGS = flags.FLAGS
+flags.DEFINE_boolean('search_MAP_best_params', False, 'If true, it will optimise kernel and bandwith for KDE on etas.')
+flags.DEFINE_integer('thinning', None, 'Thinning between MCMC samples.')
+flags.DEFINE_integer('n_samples', 1000, 'Number of total samples to run (excluding warmup).')
+flags.DEFINE_string('model', 'models.NetworkSS_repr_etaRepr_loglikRepr', 'Name of model to be run.')
+flags.DEFINE_string('Y', 'COVID_629_meta.csv', 'Name of file where data for dependent variable is stored.')
+flags.DEFINE_multi_string('network_list', ['GEO_clean_629.npy', 'SCI_clean_629.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
+flags.mark_flags_as_required(['thinning'])
+FLAGS(sys.argv)
+
 enable_x64(use_x64=True)
 print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
 #%%
 # load data 
-# covid_vals = jax.device_put(jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values), jax.devices("cpu")[0])
-covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values)
-geo_clean = jnp.array(jnp.load(data_path + 'GEO_clean_629.npy'))
-sci_clean = jnp.array(jnp.load(data_path + 'SCI_clean_629.npy'))
+my_model = eval(FLAGS.model)
+search_MAP_best_params = FLAGS.search_MAP_best_params
+n_samples_2mcmc = FLAGS.n_samples
+thinning = FLAGS.thinning
+covid_vals_name = FLAGS.Y
+network_names = FLAGS.network_list
+print(network_names)
+# load data
+covid_vals = jnp.array(pd.read_csv(data_path + covid_vals_name, index_col='Unnamed: 0').values)
+geo_clean = jnp.array(jnp.load(data_path + network_names[0]))
+sci_clean = jnp.array(jnp.load(data_path + network_names[1]))
 
-#%%
-covid_vals = covid_vals[:,:20].copy()
-geo_clean = geo_clean[:20, :20].copy()
-sci_clean = sci_clean[:20, :20].copy()
+covid_vals = covid_vals[:,:100].copy()
+geo_clean = geo_clean[:100, :100].copy()
+sci_clean = sci_clean[:100, :100].copy()
+A_list = [geo_clean, sci_clean]
+
+# # covid_vals = jax.device_put(jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values), jax.devices("cpu")[0])
+
 #%%
 n,p = covid_vals.shape
 print(f"NetworkSS, n {n} and p {p}")
@@ -120,12 +140,14 @@ else:
             best_params = pickle.load(fr)
     except:
         best_params = {'eta0_0':{'bandwidth': 0.1, 'kernel': 'linear'}, 
-                        'eta0_coefs':{'bandwidth': 0.1, 'kernel': 'linear'},
+                        'eta0_coefs_0':{'bandwidth': 0.1, 'kernel': 'linear'},
+                        'eta0_coefs_1':{'bandwidth': 0.1, 'kernel': 'linear'},
                         'eta1_0':{'bandwidth': 0.3088843596477481, 'kernel': 'linear'}, 
                         'eta1_coefs_0':{'bandwidth': 0.13257113655901093, 'kernel': 'linear'}, 
                         'eta1_coefs_1':{'bandwidth': 0.13257113655901093, 'kernel': 'linear'}, 
                         'eta2_0':{'bandwidth': 1.2648552168552958, 'kernel': 'linear'}, 
-                        'eta2_coefs':{'bandwidth': 0.2559547922699536, 'kernel': 'gaussian'}}
+                        'eta2_coefs_0':{'bandwidth': 0.2559547922699536, 'kernel': 'gaussian'},
+                        'eta2_coefs_1':{'bandwidth': 0.2559547922699536, 'kernel': 'gaussian'}}
 
 x_ranges = {'eta0_0':np.linspace(-10, 1, 10000), 'eta0_coefs':np.linspace(-4, 5, 10000),
            'eta1_0':np.linspace(-10, 5, 10000), 'eta1_coefs':np.linspace(-5, 5, 10000),
@@ -241,11 +263,11 @@ def SVI_init_strategy_golazo_ss(A_list, mcmc_res, fixed_params_dict):
 #%%
 ## params
 n_warmup = 1000
-n_samples = 500
+n_samples = n_samples_2mcmc
 n_batches = 1
 batch = int(n_samples/n_batches)
 
-my_model = models.NetworkSS_repr_etaRepr
+# my_model = models.NetworkSS_repr_etaRepr
 is_dense=False
 #%%
 mu_fixed=jnp.zeros((p,))
@@ -290,6 +312,13 @@ my_model_args = {"A_list":A_list, "eta0_0_m":eta0_0_m, "eta0_0_s":eta0_0_s,
          "eta2_0_m":eta2_0_m, "eta2_0_s":eta2_0_s, 
          "eta2_coefs_m":eta2_coefs_m, "eta2_coefs_s":eta2_coefs_s,
          "mu_m":mu_m, "mu_s":mu_s} 
+
+if my_model == models.NetworkSS_repr_etaRepr_loglikRepr:
+    y_bar = covid_vals.mean(axis=0) #p
+    S_bar = covid_vals.T@covid_vals/n - jnp.outer(y_bar, y_bar) #(p,p)
+    my_model_args.update({"y_bar":y_bar, "S_bar":S_bar, "n":n, "p":p,})
+elif my_model == models.NetworkSS_repr_etaRepr:
+    my_model_args.update({"Y":covid_vals,})
 #%%
 u_init_cpu, rho_tilde_init_cpu, sqrt_diag_init_cpu = SVI_init_strategy_golazo_ss(A_list=A_list, mcmc_res=res, 
                                                                  fixed_params_dict=fixed_params_dict)
@@ -310,7 +339,7 @@ else:
 
 nuts_kernel = NUTS(my_model_run, init_strategy=my_init_strategy, dense_mass=is_dense)
 mcmc = MCMC(nuts_kernel, num_warmup=n_warmup, num_samples=batch)
-mcmc.run(rng_key = Key(5), Y=covid_vals, **my_model_args,
+mcmc.run(rng_key = Key(5), **my_model_args,
         extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state'))
 # for b in range(n_batches-1):
 #     sample_batch = mcmc.get_samples()

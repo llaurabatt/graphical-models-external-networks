@@ -372,14 +372,11 @@ def NetworkSS_repr_etaRepr(A_list, eta0_0_m=0., eta0_0_s=5., eta1_0_m=0., eta1_0
     return {'Y':Y, 'theta':theta, 'mu':mu, 'rho':rho, 'eta1_0':eta1_0, 'eta1_coefs':eta1_coefs}
 
 #%%
-def NetworkSS_repr_etaRepr_loglikRepr(A_list, eta0_0_m=0., eta0_0_s=5., eta1_0_m=0., eta1_0_s=5., eta2_0_m=0., eta2_0_s=5.,
+def NetworkSS_repr_etaRepr_loglikRepr(A_list,
+                                      eta0_0_m=0., eta0_0_s=5., eta1_0_m=0., eta1_0_s=5., eta2_0_m=0., eta2_0_s=5.,
               eta0_coefs_m=0., eta0_coefs_s=5., eta1_coefs_m=0., eta1_coefs_s=5., eta2_coefs_m=0., eta2_coefs_s=5., 
-           mu_m=0., mu_s=1., Y=None, n=None, p=None):
+           mu_m=0., mu_s=1., y_bar=None, S_bar=None, n=None, p=None):
 
-    try:
-        n, p = jnp.shape(Y)
-    except:
-         assert ((n is None)|(p is None)) is False
     
     # intercepts
     tilde_eta0_0 = sample("tilde_eta0_0", dist.Normal(0, jnp.sqrt((p*(p-1)/2.0)/n)))     
@@ -472,14 +469,15 @@ def NetworkSS_repr_etaRepr_loglikRepr(A_list, eta0_0_m=0., eta0_0_s=5., eta1_0_m
     # with plate("hist", n):
     #     Y = sample("obs", dist.MultivariateNormal(mu, precision_matrix=theta), obs = Y)
 
-    y_bar = Y.mean(axis=0) #p
-    S_bar = Y.T@Y/n - jnp.outer(y_bar, y_bar) #(p,p)
+    # y_bar = Y.mean(axis=0) #p
+    # S_bar = Y.T@Y/n - jnp.outer(y_bar, y_bar) #(p,p)
 
     factor("obs_factor", loglik(mu=mu, precision_matrix=theta, 
                             y_bar=y_bar, S_bar=S_bar, n=n, p=p))
 
 
-    return {'Y':Y, 'theta':theta, 'mu':mu, 'rho':rho, 'eta1_0':eta1_0, 'eta1_coefs':eta1_coefs}
+    return {'y_bar':y_bar, 'S_bar':S_bar, 'n':n, "p":p, 'theta':theta, 'mu':mu, 'rho':rho, 
+            'eta1_0':eta1_0, 'eta1_coefs':eta1_coefs}
 
 
 def loglik(mu, precision_matrix, y_bar, S_bar, n, p): 

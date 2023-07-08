@@ -59,16 +59,9 @@ cpus = jax.devices("cpu")
 #%%
 def mcmc1_init(covid_vals,
                A_list,
+               my_model,
                thinning:Optional[int]=0,
         ):
-    # # load data 
-    # covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values)
-    # geo_clean = jnp.array(jnp.load(data_path + 'GEO_clean_629.npy'))
-    # sci_clean = jnp.array(jnp.load(data_path + 'SCI_clean_629.npy'))
-    # #%%
-    # covid_vals = covid_vals[:,:20].copy()
-    # geo_clean = geo_clean[:20, :20].copy()
-    # sci_clean = sci_clean[:20, :20].copy()
 
     #%%
     n,p = covid_vals.shape
@@ -84,7 +77,6 @@ def mcmc1_init(covid_vals,
     mu_m=0.
     mu_s=1.
     verbose = True
-    my_model = models.NetworkSS_repr_etaRepr_loglikRepr #models.NetworkSS_repr_etaRepr
     is_dense=False
     #%%
     ## first element for p=10, second element for p=50
@@ -133,13 +125,21 @@ def mcmc1_init(covid_vals,
 
 
     # A_list = [geo_clean, sci_clean]
-    my_model_args = {"A_list":A_list, "eta0_0_m":eta0_0_m, "eta0_0_s":eta0_0_s, 
-                "eta0_coefs_m":eta0_coefs_m, "eta0_coefs_s":eta0_coefs_s,
-                "eta1_0_m":eta1_0_m, "eta1_0_s":eta1_0_s, 
-                "eta1_coefs_m":eta1_coefs_m, "eta1_coefs_s":eta1_coefs_s,
-                "eta2_0_m":eta2_0_m, "eta2_0_s":eta2_0_s, 
-                "eta2_coefs_m":eta2_coefs_m, "eta2_coefs_s":eta2_coefs_s,
-                "mu_m":mu_m, "mu_s":mu_s} 
+    my_model_args = {"A_list":A_list, 
+                    "eta0_0_m":eta0_0_m, "eta0_0_s":eta0_0_s, 
+            "eta0_coefs_m":eta0_coefs_m, "eta0_coefs_s":eta0_coefs_s,
+            "eta1_0_m":eta1_0_m, "eta1_0_s":eta1_0_s, 
+            "eta1_coefs_m":eta1_coefs_m, "eta1_coefs_s":eta1_coefs_s,
+            "eta2_0_m":eta2_0_m, "eta2_0_s":eta2_0_s, 
+            "eta2_coefs_m":eta2_coefs_m, "eta2_coefs_s":eta2_coefs_s,
+            "mu_m":mu_m, "mu_s":mu_s} 
+    if my_model == models.NetworkSS_repr_etaRepr_loglikRepr:
+        y_bar = covid_vals.mean(axis=0) #p
+        S_bar = covid_vals.T@covid_vals/n - jnp.outer(y_bar, y_bar) #(p,p)
+        my_model_args.update({"y_bar":y_bar, "S_bar":S_bar, "n":n, "p":p,})
+    elif my_model == models.NetworkSS_repr_etaRepr:
+        my_model_args.update({"Y":covid_vals,})
+
 
     #%%
     # run model
@@ -151,7 +151,7 @@ def mcmc1_init(covid_vals,
 
     nuts_kernel = NUTS(my_model_run, init_strategy=my_init_strategy, dense_mass=is_dense)
     mcmc = MCMC(nuts_kernel, num_warmup=n_warmup, num_samples=batch)
-    mcmc.run(rng_key = Key(3), Y=covid_vals, **my_model_args,
+    mcmc.run(rng_key = Key(3), **my_model_args,
             extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state'))
     # for b in range(n_batches-1):
     #     sample_batch = mcmc.get_samples()

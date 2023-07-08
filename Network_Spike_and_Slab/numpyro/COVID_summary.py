@@ -45,17 +45,23 @@ import my_utils
 FLAGS = flags.FLAGS
 flags.DEFINE_string('mcmc1_file', None, 'Name of 1mcmc file to generate plots from.')
 flags.DEFINE_string('mcmc2_file', None, 'Name of 2mcmc file to generate plots from.')
+flags.DEFINE_string('Y', 'COVID_629_meta.csv', 'Name of file where data for dependent variable is stored.')
+flags.DEFINE_multi_string('network_list', ['GEO_clean_629.npy', 'SCI_clean_629.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
 flags.mark_flags_as_required(['mcmc1_file', 'mcmc2_file'])
 FLAGS(sys.argv)
 
 # load data
-covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values)
-geo_clean = jnp.array(jnp.load(data_path + 'GEO_clean_629.npy'))
-sci_clean = jnp.array(jnp.load(data_path + 'SCI_clean_629.npy'))
+covid_vals_name = FLAGS.Y
+network_names = FLAGS.network_list
+print(network_names)
 
-covid_vals = covid_vals[:,:20].copy()
-geo_clean = geo_clean[:20, :20].copy()
-sci_clean = sci_clean[:20, :20].copy()
+covid_vals = jnp.array(pd.read_csv(data_path + covid_vals_name, index_col='Unnamed: 0').values)
+geo_clean = jnp.array(jnp.load(data_path + network_names[0]))
+sci_clean = jnp.array(jnp.load(data_path + network_names[1]))
+
+covid_vals = covid_vals[:,:100].copy()
+geo_clean = geo_clean[:100, :100].copy()
+sci_clean = sci_clean[:100, :100].copy()
 
 net_no = 2
 scale_spike_fixed =0.003
@@ -79,7 +85,7 @@ outputs = {"NetworkSS_geo_sci":output_dict_ss_geo_sci }
 #     res_ss_geo_sci = pickle.load(fr)
 
 # with open(data_save_path + f'NetworkSS_1mcmc_p629_s1500.sav', 'rb') as fr:
-with open(data_save_path + FLAGS.mcmc1, 'rb') as fr:
+with open(data_save_path + FLAGS.mcmc1_file, 'rb') as fr:
     res_ss_geo_sci = pickle.load(fr)
 
 all_res = {"NetworkSS_geo_sci":res_ss_geo_sci}
@@ -167,7 +173,7 @@ output_dict_ss_geo_sci = {"eta0_0":[],"eta0_coefs":[], "eta1_0":[],"eta1_coefs":
 outputs = {"NetworkSS_geo_sci":output_dict_ss_geo_sci}
 
 # with open(data_save_path + f'NetworkSS_2mcmc_p629_s1500.sav', 'rb') as fr:
-with open(data_save_path + FLAGS.mcmc2, 'rb') as fr:
+with open(data_save_path + FLAGS.mcmc2_file, 'rb') as fr:
     mcmc2_ss_geo_sci = pickle.load(fr)
 
 
@@ -453,7 +459,7 @@ for df_ix, df in enumerate(dfs):
 fig.legend()
 plt.yticks(rotation = 90)
 fig.tight_layout()
-fig.savefig(data_save_path + 'Figures/' + 'Stock_SS_prob_slab.pdf')
+fig.savefig(data_save_path + 'Figures/' + 'COVID_SS_prob_slab.pdf')
 plt.close()
 ################################################################################################
 
@@ -494,7 +500,7 @@ for df_ix, df in enumerate(dfs):
 fig.legend()
 plt.yticks(rotation = 90)
 fig.tight_layout()
-fig.savefig(data_save_path + 'Figures/' + 'Stock_SS_mean_slab.pdf')
+fig.savefig(data_save_path + 'Figures/' + 'COVID_SS_mean_slab.pdf')
 plt.close()
 ################################################################################################
 

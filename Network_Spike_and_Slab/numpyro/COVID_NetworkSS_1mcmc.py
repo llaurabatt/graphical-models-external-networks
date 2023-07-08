@@ -55,11 +55,12 @@ import my_utils
 
 # define flags
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('thinning', 0, 'Thinning between MCMC samples.')
-flags.DEFINE_integer('n_samples', 0, 'Number of total samples to run (excluding warmup).')
+flags.DEFINE_integer('thinning', None, 'Thinning between MCMC samples.')
+flags.DEFINE_integer('n_samples', None, 'Number of total samples to run (excluding warmup).')
 flags.DEFINE_string('Y', 'COVID_629_meta.csv', 'Name of file where data for dependent variable is stored.')
+flags.DEFINE_string('model', 'models.NetworkSS_repr_etaRepr_loglikRepr', 'Name of model to be run.')
 flags.DEFINE_multi_string('network_list', ['GEO_clean_629.npy', 'SCI_clean_629.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
-flags.mark_flags_as_required(['n_samples'])
+flags.mark_flags_as_required(['n_samples', 'thinning'])
 FLAGS(sys.argv)
 
 
@@ -67,6 +68,7 @@ enable_x64(use_x64=True)
 print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
 #%%
 n_samples = FLAGS.n_samples
+my_model = eval(FLAGS.model)
 thinning = FLAGS.thinning
 covid_vals_name = FLAGS.Y
 network_names = FLAGS.network_list
@@ -76,9 +78,9 @@ covid_vals = jnp.array(pd.read_csv(data_path + covid_vals_name, index_col='Unnam
 geo_clean = jnp.array(jnp.load(data_path + network_names[0]))
 sci_clean = jnp.array(jnp.load(data_path + network_names[1]))
 
-covid_vals = covid_vals[:,:20].copy()
-geo_clean = geo_clean[:20, :20].copy()
-sci_clean = sci_clean[:20, :20].copy()
+covid_vals = covid_vals[:,:100].copy()
+geo_clean = geo_clean[:100, :100].copy()
+sci_clean = sci_clean[:100, :100].copy()
 A_list = [geo_clean, sci_clean]
 
 
@@ -107,17 +109,17 @@ if CP_init >= n_samples:
     print(f'Checkpoint at {CP_init} number of samples already exists.')
     sys.exit()
 elif (CP_init < 500):
-    mcmc1_init(thinning=thinning, covid_vals=covid_vals, A_list=A_list)
+    mcmc1_init(my_model=my_model, thinning=thinning, covid_vals=covid_vals, A_list=A_list)
     n_rounds = (n_samples-500)/400
     batches = [400]*int(n_rounds) + [(n_samples-500)%400]
     for s_ix, s in enumerate(batches):
-        mcmc1_add(thinning=thinning, covid_vals=covid_vals, A_list=A_list,
+        mcmc1_add(my_model=my_model, thinning=thinning, covid_vals=covid_vals, A_list=A_list,
               checkpoint= 500 + sum(batches[:s_ix+1]) , n_warmup=50, n_samples=s)
 else:
     n_rounds = (n_samples-CP_init)/400
     batches = [400]*int(n_rounds) + [(n_samples-CP_init)%400]
     for s_ix, s in enumerate(batches):
-        mcmc1_add(thinning=thinning, covid_vals=covid_vals, A_list=A_list,
+        mcmc1_add(my_model=my_model, thinning=thinning, covid_vals=covid_vals, A_list=A_list,
               checkpoint=CP_init + sum(batches[:s_ix+1]), n_warmup=50, n_samples=s)
  
 

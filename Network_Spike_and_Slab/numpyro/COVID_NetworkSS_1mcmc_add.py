@@ -81,19 +81,12 @@ def get_init_file(dir, checkpoint):
 def mcmc1_add(
         covid_vals,
         A_list,
+        my_model,
         checkpoint, 
         n_warmup, 
         n_samples,
         thinning:Optional[int]=0,
         ):
-    # # load data 
-    # covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values)
-    # geo_clean = jnp.array(jnp.load(data_path + 'GEO_clean_629.npy'))
-    # sci_clean = jnp.array(jnp.load(data_path + 'SCI_clean_629.npy'))
-    # #%%
-    # covid_vals = covid_vals[:,:20].copy()
-    # geo_clean = geo_clean[:20, :20].copy()
-    # sci_clean = sci_clean[:20, :20].copy()
 
     #%%
     n,p = covid_vals.shape
@@ -108,7 +101,6 @@ def mcmc1_add(
     mu_m=0.
     mu_s=1.
     verbose = True
-    my_model = models.NetworkSS_repr_etaRepr_loglikRepr #models.NetworkSS_repr_etaRepr
     is_dense=False
     #%%
     print(f'Checkpoint {checkpoint}')
@@ -164,6 +156,12 @@ def mcmc1_add(
                 "eta2_0_m":eta2_0_m, "eta2_0_s":eta2_0_s, 
                 "eta2_coefs_m":eta2_coefs_m, "eta2_coefs_s":eta2_coefs_s,
                 "mu_m":mu_m, "mu_s":mu_s} 
+    if my_model == models.NetworkSS_repr_etaRepr_loglikRepr:
+        y_bar = covid_vals.mean(axis=0) #p
+        S_bar = covid_vals.T@covid_vals/n - jnp.outer(y_bar, y_bar) #(p,p)
+        my_model_args.update({"y_bar":y_bar, "S_bar":S_bar, "n":n, "p":p,})
+    elif my_model == models.NetworkSS_repr_etaRepr:
+        my_model_args.update({"Y":covid_vals,})
 
     #%%
     # run model
@@ -175,7 +173,7 @@ def mcmc1_add(
 
     nuts_kernel = NUTS(my_model_run, init_strategy=my_init_strategy, dense_mass=is_dense)
     mcmc = MCMC(nuts_kernel, num_warmup=n_warmup, num_samples=batch)
-    mcmc.run(rng_key = Key(8), Y=covid_vals, **my_model_args,
+    mcmc.run(rng_key = Key(8), **my_model_args,
             extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state'))
     # for b in range(n_batches-1):
     #     sample_batch = mcmc.get_samples()

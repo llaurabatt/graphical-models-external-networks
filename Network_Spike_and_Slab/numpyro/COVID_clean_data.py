@@ -14,11 +14,17 @@ import jax.numpy as jnp
 from numpyro.util import enable_x64
 
 # paths
-_ROOT_DIR = "/home/user/graphical-models-external-networks/"
+# _ROOT_DIR = "/home/user/graphical-models-external-networks/"
+_ROOT_DIR = "/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-models-external-networks/"
 os.chdir(_ROOT_DIR)
-sys.path.append("/home/user/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
+# sys.path.append("/home/user/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
+sys.path.append("/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
+# data_save_path = '/home/user/mounted_folder/NetworkSS_results/'
+data_save_path = '/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/NetworkSS_results/'
+if not os.path.exists(data_save_path):
+    os.makedirs(data_save_path, mode=0o777)
 
 # load models and functions
 import models
@@ -27,9 +33,10 @@ import my_utils
 enable_x64(use_x64=True)
 print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
 
-covid_df = pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0')
-geodist = pd.read_csv(data_path + 'geodist__629_meta.csv', index_col='Unnamed: 0')
-sci_idx = pd.read_csv(data_path + 'sci_index__629_meta.csv', index_col='Unnamed: 0')
+covid_df = pd.read_csv(data_path + 'COVID_332_meta_pruned.csv', index_col='Unnamed: 0')
+geodist = pd.read_csv(data_path + 'geodist_332_meta_pruned.csv', index_col='Unnamed: 0')
+sci_idx = pd.read_csv(data_path + 'sci_index_332_meta_pruned.csv', index_col='Unnamed: 0')
+flights = pd.read_csv(data_path + 'flights_332_meta.csv', index_col='Unnamed: 0')
 
 n,p = covid_df.shape
 
@@ -48,9 +55,16 @@ geo_vals = geodist.values
 inv_log_geo = 1/jnp.log(geo_vals)
 geo_clean = diag_scale_network(log_A=inv_log_geo, p=p)
 
+# sci
 sci_vals = sci_idx.values
 log_sci = jnp.log(sci_vals)
 sci_clean = diag_scale_network(log_A=log_sci, p=p)
 
-jnp.save(data_path + 'GEO_clean_629.npy', geo_clean)
-jnp.save(data_path + 'SCI_clean_629.npy', sci_clean)
+# flights
+flights_vals = flights.values
+log_flights = jnp.log(1+flights_vals)
+flights_clean = diag_scale_network(log_A=log_flights, p=p)
+
+jnp.save(data_path + 'GEO_meta_clean_332.npy', geo_clean)
+jnp.save(data_path + 'SCI_meta_clean_332.npy', sci_clean)
+jnp.save(data_path + 'flights_meta_clean_332.npy', sci_clean)

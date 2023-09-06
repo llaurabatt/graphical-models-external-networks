@@ -40,12 +40,12 @@ from COVID_NetworkSS_1mcmc_init import mcmc1_init
 from COVID_NetworkSS_1mcmc_add import mcmc1_add
 #%%
 # paths
-_ROOT_DIR = "/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-models-external-networks/"
-os.chdir(_ROOT_DIR)
-sys.path.append("/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
+_ROOT_DIR = "/home/paperspace/"
+os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
+sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = '/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/NetworkSS_results/'
+data_save_path = _ROOT_DIR + 'NetworkSS_results/'
 if not os.path.exists(data_save_path):
     os.makedirs(data_save_path, mode=0o777)
 #%%
@@ -57,9 +57,9 @@ import my_utils
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('thinning', None, 'Thinning between MCMC samples.')
 flags.DEFINE_integer('n_samples', None, 'Number of total samples to run (excluding warmup).')
-flags.DEFINE_string('Y', 'COVID_629_meta.csv', 'Name of file where data for dependent variable is stored.')
+flags.DEFINE_string('Y', 'COVID_332_meta_pruned.csv', 'Name of file where data for dependent variable is stored.')
 flags.DEFINE_string('model', 'models.NetworkSS_repr_etaRepr_loglikRepr', 'Name of model to be run.')
-flags.DEFINE_multi_string('network_list', ['GEO_clean_629.npy', 'SCI_clean_629.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
+flags.DEFINE_multi_string('network_list', ['GEO_meta_clean_332.npy', 'SCI_meta_clean_332.npy', 'flights_meta_clean_332.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
 flags.mark_flags_as_required(['n_samples', 'thinning'])
 FLAGS(sys.argv)
 
@@ -77,11 +77,12 @@ print(network_names)
 covid_vals = jnp.array(pd.read_csv(data_path + covid_vals_name, index_col='Unnamed: 0').values)
 geo_clean = jnp.array(jnp.load(data_path + network_names[0]))
 sci_clean = jnp.array(jnp.load(data_path + network_names[1]))
+flights_clean = jnp.array(jnp.load(data_path + network_names[2]))
 
-covid_vals = covid_vals[:,:100].copy()
-geo_clean = geo_clean[:100, :100].copy()
-sci_clean = sci_clean[:100, :100].copy()
-A_list = [geo_clean, sci_clean]
+# covid_vals = covid_vals[:,:100].copy()
+# geo_clean = geo_clean[:100, :100].copy()
+# sci_clean = sci_clean[:100, :100].copy()
+A_list = [geo_clean, sci_clean, flights_clean]
 
 
 

@@ -391,12 +391,12 @@ def NetworkSS_repr_etaRepr_loglikRepr(A_list,
     eta2_0 = deterministic("eta2_0", eta2_0)    
     
     # coefs
-    a = len(A_list)
+    n_nets = len(A_list)
+    assert ((n_nets>0))
 
-    assert ((a>0))
-    tilde_eta0_coefs = sample("tilde_eta0_coefs", dist.Normal(0, jnp.sqrt((p*(p-1)/2.0)/n)).expand((a,))) # (a,)
-    tilde_eta1_coefs = sample("tilde_eta1_coefs", dist.Normal(0, jnp.sqrt((p*(p-1)/2.0)/n)).expand((a,))) # (a,)
-    tilde_eta2_coefs = sample("tilde_eta2_coefs", dist.Normal(0, jnp.sqrt((p*(p-1)/2.0)/n)).expand((a,))) # (a,)
+    tilde_eta0_coefs = sample("tilde_eta0_coefs", dist.Normal(0, jnp.sqrt((p*(p-1)/2.0)/n)).expand((n_nets,))) # (a,)
+    tilde_eta1_coefs = sample("tilde_eta1_coefs", dist.Normal(0, jnp.sqrt((p*(p-1)/2.0)/n)).expand((n_nets,))) # (a,)
+    tilde_eta2_coefs = sample("tilde_eta2_coefs", dist.Normal(0, jnp.sqrt((p*(p-1)/2.0)/n)).expand((n_nets,))) # (a,)
     
     eta0_coefs = eta0_coefs_m + eta0_coefs_s * tilde_eta0_coefs / jnp.sqrt((p*(p-1)/2.0)/n)
     eta0_coefs = deterministic("eta0_coefs", eta0_coefs)
@@ -404,7 +404,7 @@ def NetworkSS_repr_etaRepr_loglikRepr(A_list,
     eta1_coefs = deterministic("eta1_coefs", eta1_coefs)    
     eta2_coefs = eta2_coefs_m + eta2_coefs_s * tilde_eta2_coefs / jnp.sqrt((p*(p-1)/2.0)/n)
     eta2_coefs = deterministic("eta2_coefs", eta2_coefs) 
-    assert (len(eta0_coefs) == a) 
+    assert (len(eta0_coefs) == n_nets) 
 
     with plate("features", p):
         mu = sample("mu", dist.Normal(mu_m, mu_s))

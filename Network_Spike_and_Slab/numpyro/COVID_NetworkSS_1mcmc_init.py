@@ -38,15 +38,14 @@ from typing import Optional
 
 #%%
 # paths
-_ROOT_DIR = "/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-models-external-networks/"
-os.chdir(_ROOT_DIR)
-sys.path.append("/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
+_ROOT_DIR = "/home/paperspace/"
+os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
+sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = '/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/NetworkSS_results/'
+data_save_path = _ROOT_DIR + 'NetworkSS_results/'
 if not os.path.exists(data_save_path):
     os.makedirs(data_save_path, mode=0o777)
-# data_init_path = './data/sim_GLASSO_data/'
 #%%
 # load models and functions
 import models
@@ -65,7 +64,8 @@ def mcmc1_init(covid_vals,
 
     #%%
     n,p = covid_vals.shape
-    print(f"NetworkSS, n {n} and p {p}")
+    n_nets = len(A_list)
+    print(f"NetworkSS, n {n}, p {p}, number of networks {n_nets}")
     #%%
 
     #%%
@@ -117,9 +117,9 @@ def mcmc1_init(covid_vals,
                                                 'tilde_eta0_0':0.,
                                                 'tilde_eta1_0':0.,
                                                 'tilde_eta2_0':0.,                                     
-                                                'tilde_eta0_coefs':jnp.array([0., 0.]),
-                                                'tilde_eta1_coefs':jnp.array([0., 0.]),
-                                                'tilde_eta2_coefs':jnp.array([0., 0.]),})
+                                                'tilde_eta0_coefs':jnp.array([0.]*n_nets),
+                                                'tilde_eta1_coefs':jnp.array([0.]*n_nets),
+                                                'tilde_eta2_coefs':jnp.array([0.]*n_nets),})
 
 
 

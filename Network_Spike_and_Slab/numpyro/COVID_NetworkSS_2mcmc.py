@@ -41,16 +41,14 @@ from numpyro.primitives import deterministic
 cpus = gpus = jax.devices("cpu")
 # gpus = jax.devices("gpu")
 
+#%%
 # paths
-# _ROOT_DIR = "/home/user/graphical-models-external-networks/"
-_ROOT_DIR = "/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-models-external-networks/"
-os.chdir(_ROOT_DIR)
-# sys.path.append("/home/user/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
-sys.path.append("/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
+_ROOT_DIR = "/home/paperspace/"
+os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
+sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-# data_save_path = '/home/user/mounted_folder/NetworkSS_results/'
-data_save_path = '/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/NetworkSS_results/'
+data_save_path = _ROOT_DIR + 'NetworkSS_results/'
 if not os.path.exists(data_save_path):
     os.makedirs(data_save_path, mode=0o777)
 #%%
@@ -64,8 +62,8 @@ flags.DEFINE_boolean('search_MAP_best_params', False, 'If true, it will optimise
 flags.DEFINE_integer('thinning', None, 'Thinning between MCMC samples.')
 flags.DEFINE_integer('n_samples', 1000, 'Number of total samples to run (excluding warmup).')
 flags.DEFINE_string('model', 'models.NetworkSS_repr_etaRepr_loglikRepr', 'Name of model to be run.')
-flags.DEFINE_string('Y', 'COVID_629_meta.csv', 'Name of file where data for dependent variable is stored.')
-flags.DEFINE_multi_string('network_list', ['GEO_clean_629.npy', 'SCI_clean_629.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
+flags.DEFINE_string('Y', 'COVID_332_meta_pruned.csv', 'Name of file where data for dependent variable is stored.')
+flags.DEFINE_multi_string('network_list', ['GEO_meta_clean_332.npy', 'SCI_meta_clean_332.npy', 'flights_meta_clean_332.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
 flags.mark_flags_as_required(['thinning'])
 FLAGS(sys.argv)
 
@@ -84,17 +82,19 @@ print(network_names)
 covid_vals = jnp.array(pd.read_csv(data_path + covid_vals_name, index_col='Unnamed: 0').values)
 geo_clean = jnp.array(jnp.load(data_path + network_names[0]))
 sci_clean = jnp.array(jnp.load(data_path + network_names[1]))
+flights_clean = jnp.array(jnp.load(data_path + network_names[2]))
 
-covid_vals = covid_vals[:,:100].copy()
-geo_clean = geo_clean[:100, :100].copy()
-sci_clean = sci_clean[:100, :100].copy()
-A_list = [geo_clean, sci_clean]
+# covid_vals = covid_vals[:,:100].copy()
+# geo_clean = geo_clean[:100, :100].copy()
+# sci_clean = sci_clean[:100, :100].copy()
+A_list = [geo_clean, sci_clean, flights_clean]
 
 # # covid_vals = jax.device_put(jnp.array(pd.read_csv(data_path + 'COVID_629_meta.csv', index_col='Unnamed: 0').values), jax.devices("cpu")[0])
 
 #%%
 n,p = covid_vals.shape
-print(f"NetworkSS, n {n} and p {p}")
+n_nets = len(A_list)
+print(f"NetworkSS, n {n}, p {p}, number of networks {n_nets}")
 #%%
 ################## MAP ###############
 for f in os.listdir(data_save_path):
@@ -117,15 +117,21 @@ if search_MAP_best_params:
     for par in hyperpars:
         print(par)
         if 'coefs' in par:
-            my_kern = KernelDensity()
-            grid_model = GridSearchCV(my_kern, {'bandwidth': bandwidths, 'kernel':kernels})
-            grid_model.fit(res[par][:,0][:,None])
-            best_params[par + '_0'] = grid_model.best_params_
+            for net_ix in n_nets:
+                my_kern = KernelDensity()
+                grid_model = GridSearchCV(my_kern, {'bandwidth': bandwidths, 'kernel':kernels})
+                grid_model.fit(res[par][:,net_ix][:,None])
+                best_params[par + f'_{net_ix}'] = grid_model.best_params_
 
-            my_kern = KernelDensity()
-            grid_model = GridSearchCV(my_kern, {'bandwidth': bandwidths, 'kernel':kernels})
-            grid_model.fit(res[par][:,1][:,None])
-            best_params[par + '_1'] = grid_model.best_params_
+                # my_kern = KernelDensity()
+                # grid_model = GridSearchCV(my_kern, {'bandwidth': bandwidths, 'kernel':kernels})
+                # grid_model.fit(res[par][:,0][:,None])
+                # best_params[par + '_0'] = grid_model.best_params_
+
+                # my_kern = KernelDensity()
+                # grid_model = GridSearchCV(my_kern, {'bandwidth': bandwidths, 'kernel':kernels})
+                # grid_model.fit(res[par][:,1][:,None])
+                # best_params[par + '_1'] = grid_model.best_params_
         else:
             my_kern = KernelDensity()
             grid_model = GridSearchCV(my_kern, {'bandwidth': bandwidths, 'kernel':kernels})
@@ -158,6 +164,7 @@ etas_MAPs = {k:0 for k in hyperpars}
 
 for par in hyperpars:
     if 'coefs' in par:
+        for net_ix in n_nets:
         samples = res[par][:,0].flatten()
 
         kde = KernelDensity(**best_params[par + '_0'])
@@ -304,7 +311,7 @@ fixed_params_dict = {"mu":mu_fixed, "scale_spike":scale_spike_fixed,
 blocked_params_list = ["mu", "scale_spike", "eta0_0", "eta0_coefs", "eta1_0", "eta1_coefs", 
                        "eta2_0", "eta2_coefs"]
 
-A_list = [geo_clean, sci_clean]
+
 my_model_args = {"A_list":A_list, "eta0_0_m":eta0_0_m, "eta0_0_s":eta0_0_s, 
          "eta0_coefs_m":eta0_coefs_m, "eta0_coefs_s":eta0_coefs_s,
          "eta1_0_m":eta1_0_m, "eta1_0_s":eta1_0_s, 

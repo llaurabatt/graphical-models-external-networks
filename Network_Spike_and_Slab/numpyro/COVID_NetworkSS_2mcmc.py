@@ -1,10 +1,10 @@
 #%%
 # """Main script for training the model."""
-import debugpy
-debugpy.listen(5678)
-print('Waiting for debugger')
-debugpy.wait_for_client()
-print('Debugger attached')
+# import debugpy
+# debugpy.listen(5678)
+# print('Waiting for debugger')
+# debugpy.wait_for_client()
+# print('Debugger attached')
 #%%
 # imports
 import sys
@@ -20,7 +20,7 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import KernelDensity
 import jax
 import numpyro
-numpyro.set_platform('cpu')
+# numpyro.set_platform('cpu')
 print(jax.lib.xla_bridge.get_backend().platform)
 import jax.numpy as jnp
 from numpyro.infer import MCMC, NUTS 
@@ -38,8 +38,8 @@ from numpyro.distributions import ImproperUniform, constraints
 import numpyro.infer.util 
 from numpyro.primitives import deterministic
 #%%
-cpus = gpus = jax.devices("cpu")
-# gpus = jax.devices("gpu")
+cpus = jax.devices("cpu")
+gpus = jax.devices("gpu")
 
 #%%
 # paths
@@ -117,7 +117,7 @@ if search_MAP_best_params:
     for par in hyperpars:
         print(par)
         if 'coefs' in par:
-            for net_ix in n_nets:
+            for net_ix in range(n_nets):
                 my_kern = KernelDensity()
                 grid_model = GridSearchCV(my_kern, {'bandwidth': bandwidths, 'kernel':kernels})
                 grid_model.fit(res[par][:,net_ix][:,None])
@@ -148,47 +148,64 @@ else:
         best_params = {'eta0_0':{'bandwidth': 0.1, 'kernel': 'linear'}, 
                         'eta0_coefs_0':{'bandwidth': 0.1, 'kernel': 'linear'},
                         'eta0_coefs_1':{'bandwidth': 0.1, 'kernel': 'linear'},
+                        'eta0_coefs_2':{'bandwidth': 0.1, 'kernel': 'linear'},
                         'eta1_0':{'bandwidth': 0.3088843596477481, 'kernel': 'linear'}, 
                         'eta1_coefs_0':{'bandwidth': 0.13257113655901093, 'kernel': 'linear'}, 
-                        'eta1_coefs_1':{'bandwidth': 0.13257113655901093, 'kernel': 'linear'}, 
+                        'eta1_coefs_1':{'bandwidth': 0.13257113655901093, 'kernel': 'linear'},
+                        'eta1_coefs_2':{'bandwidth': 0.13257113655901093, 'kernel': 'linear'}, 
                         'eta2_0':{'bandwidth': 1.2648552168552958, 'kernel': 'linear'}, 
                         'eta2_coefs_0':{'bandwidth': 0.2559547922699536, 'kernel': 'gaussian'},
-                        'eta2_coefs_1':{'bandwidth': 0.2559547922699536, 'kernel': 'gaussian'}}
+                        'eta2_coefs_1':{'bandwidth': 0.2559547922699536, 'kernel': 'gaussian'},
+                        'eta2_coefs_2':{'bandwidth': 0.2559547922699536, 'kernel': 'gaussian'}}
 
-x_ranges = {'eta0_0':np.linspace(-10, 1, 10000), 'eta0_coefs':np.linspace(-4, 5, 10000),
+x_ranges = {'eta0_0':np.linspace(-10, 1, 10000), 'eta0_coefs':np.linspace(-6, 5, 10000),
            'eta1_0':np.linspace(-10, 5, 10000), 'eta1_coefs':np.linspace(-5, 5, 10000),
-           'eta2_0':np.linspace(-20, 0, 10000), 'eta2_coefs':np.linspace(-5, 15, 10000)}
+           'eta2_0':np.linspace(-35, 40, 10000), 'eta2_coefs':np.linspace(-7, 15, 10000)}
 #%%         
 etas_MAPs = {k:0 for k in hyperpars}
 
 
 for par in hyperpars:
     if 'coefs' in par:
-        for net_ix in n_nets:
-        samples = res[par][:,0].flatten()
+        maps = []
+        for net_ix in range(n_nets):
+            samples = res[par][:,net_ix].flatten()
 
-        kde = KernelDensity(**best_params[par + '_0'])
-        kde.fit(samples[:, None])
+            kde = KernelDensity(**best_params[par + f'_{net_ix}'])
+            kde.fit(samples[:, None])
 
-        logdensity = kde.score_samples(x_ranges[par][:, None])
-        density = jnp.exp(logdensity)
-        MAP_1 = x_ranges[par][jnp.argmax(density)]
-        post_mean_1 = samples.mean()
-        print(f'{par} A1: MAP {MAP_1}, post. mean {post_mean_1}')
+            logdensity = kde.score_samples(x_ranges[par][:, None])
+            density = jnp.exp(logdensity)
+            MAP = x_ranges[par][jnp.argmax(density)]
+            post_mean = samples.mean()
+            print(f'{par} A{net_ix}: MAP {MAP}, post. mean {post_mean}')
+            maps.append(MAP)
+        
+        etas_MAPs[par] = jnp.hstack(maps)
+            # samples = res[par][:,0].flatten()
 
-        ############
-        samples = res[par][:,1].flatten()
+            # kde = KernelDensity(**best_params[par + '_0'])
+            # kde.fit(samples[:, None])
 
-        kde = KernelDensity(**best_params[par+ '_1'])
-        kde.fit(samples[:, None])
+            # logdensity = kde.score_samples(x_ranges[par][:, None])
+            # density = jnp.exp(logdensity)
+            # MAP_1 = x_ranges[par][jnp.argmax(density)]
+            # post_mean_1 = samples.mean()
+            # print(f'{par} A1: MAP {MAP_1}, post. mean {post_mean_1}')
 
-        logdensity = kde.score_samples(x_ranges[par][:, None])
-        density = jnp.exp(logdensity)
-        MAP_2 = x_ranges[par][jnp.argmax(density)]
-        post_mean_2 = samples.mean()
-        etas_MAPs[par] = jnp.hstack([MAP_1, MAP_2])
-        print(f'{par} A2: MAP {MAP_2}, post. mean {post_mean_2}')
-    
+            # ############
+            # samples = res[par][:,1].flatten()
+
+            # kde = KernelDensity(**best_params[par+ '_1'])
+            # kde.fit(samples[:, None])
+
+            # logdensity = kde.score_samples(x_ranges[par][:, None])
+            # density = jnp.exp(logdensity)
+            # MAP_2 = x_ranges[par][jnp.argmax(density)]
+            # post_mean_2 = samples.mean()
+            # etas_MAPs[par] = jnp.hstack([MAP_1, MAP_2])
+            # print(f'{par} A2: MAP {MAP_2}, post. mean {post_mean_2}')
+        
     else:
 
         samples = res[par].flatten()
@@ -201,7 +218,7 @@ for par in hyperpars:
         MAP = x_ranges[par][jnp.argmax(density)]
         post_mean = samples.mean()
         etas_MAPs[par] = MAP
-        print(f'{par} P: MAP {MAP}, post. mean {post_mean}')
+        print(f'{par} : MAP {MAP}, post. mean {post_mean}')
 
 #%%
 ################# 2mcmc ##############

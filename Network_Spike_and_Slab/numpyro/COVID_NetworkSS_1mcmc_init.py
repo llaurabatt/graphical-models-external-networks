@@ -1,10 +1,10 @@
 # #%%
 # """Main script for training the model."""
-import debugpy
-debugpy.listen(5678)
-print('Waiting for debugger')
-debugpy.wait_for_client()
-print('Debugger attached')
+# import debugpy
+# debugpy.listen(5678)
+# print('Waiting for debugger')
+# debugpy.wait_for_client()
+# print('Debugger attached')
 #%%
 # imports
 import sys
@@ -17,7 +17,7 @@ import pickle
 from sklearn.neighbors import KernelDensity
 import jax
 import numpyro
-numpyro.set_platform('cpu')
+# numpyro.set_platform('cpu')
 print(jax.lib.xla_bridge.get_backend().platform)
 import jax.numpy as jnp
 from numpyro.infer import MCMC, NUTS 
@@ -54,7 +54,7 @@ import my_utils
 enable_x64(use_x64=True)
 print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
 cpus = jax.devices("cpu")
-# gpus = jax.devices("gpu")
+
 #%%
 def mcmc1_init(covid_vals,
                A_list,

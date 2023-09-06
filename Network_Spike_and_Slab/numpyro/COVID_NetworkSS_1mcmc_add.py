@@ -18,7 +18,7 @@ import pickle
 from sklearn.neighbors import KernelDensity
 import jax
 import numpyro
-numpyro.set_platform('cpu')
+# numpyro.set_platform('cpu')
 print(jax.lib.xla_bridge.get_backend().platform)
 import jax.numpy as jnp
 from numpyro.infer import MCMC, NUTS 
@@ -57,8 +57,8 @@ imp.reload(models)
 
 enable_x64(use_x64=True)
 print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
-cpus = gpus = jax.devices("cpu")
-# gpus = jax.devices("gpu")
+cpus = jax.devices("cpu")
+gpus = jax.devices("gpu")
 #%%
 
 def get_init_file(dir, checkpoint):

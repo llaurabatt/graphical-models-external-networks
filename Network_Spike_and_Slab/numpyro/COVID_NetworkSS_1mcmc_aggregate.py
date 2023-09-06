@@ -1,11 +1,11 @@
-#%%
-"""Main script for training the model."""
-import debugpy
-debugpy.listen(5678)
-print('Waiting for debugger')
-debugpy.wait_for_client()
-print('Debugger attached')
-#%%
+# #%%
+# """Main script for training the model."""
+# import debugpy
+# debugpy.listen(5678)
+# print('Waiting for debugger')
+# debugpy.wait_for_client()
+# print('Debugger attached')
+# #%%
 # imports
 import sys
 import os
@@ -22,15 +22,12 @@ numpyro.set_platform('cpu')
 print(jax.lib.xla_bridge.get_backend().platform)
 #%%
 # paths
-# _ROOT_DIR = "/home/user/graphical-models-external-networks/"
-_ROOT_DIR = "/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-models-external-networks/"
-os.chdir(_ROOT_DIR)
-# sys.path.append("/home/user/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
-sys.path.append("/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
+_ROOT_DIR = "/home/paperspace/"
+os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
+sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-# data_save_path = '/home/user/mounted_folder/NetworkSS_results/'
-data_save_path = '/Users/llaurabat/Dropbox/BGSE_work/LJRZH_graphs/NetworkSS_results/'
+data_save_path = _ROOT_DIR + 'NetworkSS_results/'
 if not os.path.exists(data_save_path):
     os.makedirs(data_save_path, mode=0o777)
 

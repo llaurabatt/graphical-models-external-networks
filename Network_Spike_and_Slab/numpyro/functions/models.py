@@ -104,94 +104,94 @@ def glasso_ss_repr(eta0_0_m=0., eta0_0_s=2., eta1_0_m=-7., eta1_0_s=2., eta2_0_m
         Y = sample("obs", dist.MultivariateNormal(mu, precision_matrix=theta), obs = Y)
         
     return {'Y':Y, 'theta_true':theta, 'mu_true':mu, 'scale_spike_true':scale_spike}
-#%%
-def NetworkSS_repr(A_list, eta0_0_m=0., eta0_0_s=5., eta1_0_m=0., eta1_0_s=5., eta2_0_m=0., eta2_0_s=5.,
-              eta0_coefs_m=0., eta0_coefs_s=5., eta1_coefs_m=0., eta1_coefs_s=5., eta2_coefs_m=0., eta2_coefs_s=5., 
-           mu_m=0., mu_s=1., Y=None, n=None, p=None):
+# #%%
+# def NetworkSS_repr(A_list, eta0_0_m=0., eta0_0_s=5., eta1_0_m=0., eta1_0_s=5., eta2_0_m=0., eta2_0_s=5.,
+#               eta0_coefs_m=0., eta0_coefs_s=5., eta1_coefs_m=0., eta1_coefs_s=5., eta2_coefs_m=0., eta2_coefs_s=5., 
+#            mu_m=0., mu_s=1., Y=None, n=None, p=None):
 
-    try:
-        n, p = jnp.shape(Y)
-    except:
-         assert ((n is None)|(p is None)) is False
+#     try:
+#         n, p = jnp.shape(Y)
+#     except:
+#          assert ((n is None)|(p is None)) is False
     
-    # intercepts
-    eta0_0 = sample("eta0_0", dist.Normal(eta0_0_m, eta0_0_s))     
-    eta1_0 = sample("eta1_0", dist.Normal(eta1_0_m, eta1_0_s))
-    eta2_0 = sample("eta2_0", dist.Normal(eta2_0_m, eta2_0_s))
+#     # intercepts
+#     eta0_0 = sample("eta0_0", dist.Normal(eta0_0_m, eta0_0_s))     
+#     eta1_0 = sample("eta1_0", dist.Normal(eta1_0_m, eta1_0_s))
+#     eta2_0 = sample("eta2_0", dist.Normal(eta2_0_m, eta2_0_s))
     
-    # coefs
-    a = len(A_list)
+#     # coefs
+#     a = len(A_list)
 
-    assert ((a>0))
-    eta0_coefs = sample("eta0_coefs", dist.Normal(eta0_coefs_m, eta0_coefs_s).expand((a,))) # (a,)
-    eta1_coefs = sample("eta1_coefs", dist.Normal(eta1_coefs_m, eta1_coefs_s).expand((a,))) # (a,)
-    eta2_coefs = sample("eta2_coefs", dist.Normal(eta2_coefs_m, eta2_coefs_s).expand((a,))) # (a,)
+#     assert ((a>0))
+#     eta0_coefs = sample("eta0_coefs", dist.Normal(eta0_coefs_m, eta0_coefs_s).expand((a,))) # (a,)
+#     eta1_coefs = sample("eta1_coefs", dist.Normal(eta1_coefs_m, eta1_coefs_s).expand((a,))) # (a,)
+#     eta2_coefs = sample("eta2_coefs", dist.Normal(eta2_coefs_m, eta2_coefs_s).expand((a,))) # (a,)
 
-    with plate("features", p):
-        mu = sample("mu", dist.Normal(mu_m, mu_s))
-        sqrt_diag = sample("sqrt_diag", dist.InverseGamma(0.01, 0.01))
+#     with plate("features", p):
+#         mu = sample("mu", dist.Normal(mu_m, mu_s))
+#         sqrt_diag = sample("sqrt_diag", dist.InverseGamma(0.01, 0.01))
     
     
-    # means
-    tril_idx = jnp.tril_indices(n=p, k=-1, m=p)
-    tril_len = tril_idx[0].shape[0]
-    A_tril_arr = jnp.array([A[tril_idx] for A in A_list]) # (a, p, p)
+#     # means
+#     tril_idx = jnp.tril_indices(n=p, k=-1, m=p)
+#     tril_len = tril_idx[0].shape[0]
+#     A_tril_arr = jnp.array([A[tril_idx] for A in A_list]) # (a, p, p)
 
-    A_tril_mean0 = 0.
-    for coef, A in zip(eta0_coefs,A_tril_arr):
-        A_tril_mean0 += coef*A
-    A_tril_mean0 = deterministic("A_tril_mean0", A_tril_mean0)
+#     A_tril_mean0 = 0.
+#     for coef, A in zip(eta0_coefs,A_tril_arr):
+#         A_tril_mean0 += coef*A
+#     A_tril_mean0 = deterministic("A_tril_mean0", A_tril_mean0)
 
-    A_tril_mean1 = 0.
-    for coef, A in zip(eta1_coefs,A_tril_arr):
-        A_tril_mean1 += coef*A
-    A_tril_mean1 = deterministic("A_tril_mean1", A_tril_mean1)
+#     A_tril_mean1 = 0.
+#     for coef, A in zip(eta1_coefs,A_tril_arr):
+#         A_tril_mean1 += coef*A
+#     A_tril_mean1 = deterministic("A_tril_mean1", A_tril_mean1)
         
-    A_tril_mean2 = 0.
-    for coef, A in zip(eta2_coefs,A_tril_arr):
-        A_tril_mean2 += coef*A
-    A_tril_mean2 = deterministic("A_tril_mean2", A_tril_mean2)
+#     A_tril_mean2 = 0.
+#     for coef, A in zip(eta2_coefs,A_tril_arr):
+#         A_tril_mean2 += coef*A
+#     A_tril_mean2 = deterministic("A_tril_mean2", A_tril_mean2)
     
-    # scale spike
-    scale_spike = sample("scale_spike", dist.InverseGamma(10, 0.5))
-    scale_spike = jnp.ones((tril_len,))*scale_spike
+#     # scale spike
+#     scale_spike = sample("scale_spike", dist.InverseGamma(10, 0.5))
+#     scale_spike = jnp.ones((tril_len,))*scale_spike
     
-    # mean slab
-    mean_slab = eta0_0+A_tril_mean0
-    mean_slab = deterministic("mean_slab", mean_slab)
+#     # mean slab
+#     mean_slab = eta0_0+A_tril_mean0
+#     mean_slab = deterministic("mean_slab", mean_slab)
     
-    # scale slab
-    scale_slab = scale_spike*(1+jnp.exp(-eta1_0-A_tril_mean1))
-    scale_slab = deterministic("scale_slab", scale_slab)
+#     # scale slab
+#     scale_slab = scale_spike*(1+jnp.exp(-eta1_0-A_tril_mean1))
+#     scale_slab = deterministic("scale_slab", scale_slab)
     
-    # prob of being in the slab
-    w_slab = 1/(1+jnp.exp(-eta2_0 -A_tril_mean2)) # 45
-    w_slab = deterministic("w_slab", w_slab)
+#     # prob of being in the slab
+#     w_slab = 1/(1+jnp.exp(-eta2_0 -A_tril_mean2)) # 45
+#     w_slab = deterministic("w_slab", w_slab)
     
     
-    u = sample("u", dist.Uniform(0.0, 1.0).expand((tril_len, )))
-    is_spike = my_utils.my_sigmoid(u, beta=100., alpha=w_slab)
+#     u = sample("u", dist.Uniform(0.0, 1.0).expand((tril_len, )))
+#     is_spike = my_utils.my_sigmoid(u, beta=100., alpha=w_slab)
     
-    # corr mat
-    rho_tilde = numpyro.sample("rho_tilde", dist.Laplace(0., 1.).expand((tril_len,)))
-    rho_lt = numpyro.deterministic("rho_lt", is_spike*rho_tilde*scale_spike + 
-                                  (1-is_spike)*(rho_tilde*scale_slab + mean_slab))
+#     # corr mat
+#     rho_tilde = numpyro.sample("rho_tilde", dist.Laplace(0., 1.).expand((tril_len,)))
+#     rho_lt = numpyro.deterministic("rho_lt", is_spike*rho_tilde*scale_spike + 
+#                                   (1-is_spike)*(rho_tilde*scale_slab + mean_slab))
     
-    rho_mat_tril = jnp.zeros((p,p))
-    rho_mat_tril = rho_mat_tril.at[tril_idx].set(rho_lt)
-    rho = rho_mat_tril + rho_mat_tril.T + jnp.identity(p)
+#     rho_mat_tril = jnp.zeros((p,p))
+#     rho_mat_tril = rho_mat_tril.at[tril_idx].set(rho_lt)
+#     rho = rho_mat_tril + rho_mat_tril.T + jnp.identity(p)
     
-    factor("rho_factor", (ImproperUniform(constraints.corr_matrix, (), event_shape=(p,p)).log_prob(rho)).sum())
-    rho = deterministic("rho", rho)
+#     factor("rho_factor", (ImproperUniform(constraints.corr_matrix, (), event_shape=(p,p)).log_prob(rho)).sum())
+#     rho = deterministic("rho", rho)
     
-    theta = jnp.outer(sqrt_diag,sqrt_diag)*rho
-    theta = deterministic("theta", theta)
+#     theta = jnp.outer(sqrt_diag,sqrt_diag)*rho
+#     theta = deterministic("theta", theta)
 
-    with plate("hist", n):
-        Y = sample("obs", dist.MultivariateNormal(mu, precision_matrix=theta), obs = Y)
+#     with plate("hist", n):
+#         Y = sample("obs", dist.MultivariateNormal(mu, precision_matrix=theta), obs = Y)
     
 
-    return {'Y':Y, 'theta':theta, 'mu':mu, 'rho':rho, 'eta1_0':eta1_0, 'eta1_coefs':eta1_coefs}
+#     return {'Y':Y, 'theta':theta, 'mu':mu, 'rho':rho, 'eta1_0':eta1_0, 'eta1_coefs':eta1_coefs}
 
 #%%
 
@@ -481,4 +481,187 @@ def NetworkSS_repr_etaRepr_loglikRepr(A_list,
 
 
 def loglik(mu, precision_matrix, y_bar, S_bar, n, p): 
-        return n*(-0.5*p*jnp.log(2*jnp.pi) + 0.5*jnp.linalg.slogdet(precision_matrix)[1] - 0.5*((y_bar - mu).T)@precision_matrix@(y_bar - mu) - 0.5*jnp.trace(S_bar@precision_matrix))
+        slogdet = jnp.linalg.slogdet(precision_matrix)
+        return n*(-0.5*p*jnp.log(2*jnp.pi) + 0.5*slogdet[0]*slogdet[1] - 0.5*((y_bar - mu).T)@precision_matrix@(y_bar - mu) - 0.5*jnp.trace(S_bar@precision_matrix))
+
+
+#%%
+def NetworkSS_repr_loglikRepr(A_list,
+                                      eta0_0_m=0., eta0_0_s=5., eta1_0_m=0., eta1_0_s=5., eta2_0_m=0., eta2_0_s=5.,
+              eta0_coefs_m=0., eta0_coefs_s=5., eta1_coefs_m=0., eta1_coefs_s=5., eta2_coefs_m=0., eta2_coefs_s=5., 
+           mu_m=0., mu_s=1., y_bar=None, S_bar=None, n=None, p=None):
+
+    
+    # intercepts
+    eta0_0 = sample("eta0_0", dist.Normal(eta0_0_m, eta0_0_s))     
+    eta1_0 = sample("eta1_0", dist.Normal(eta1_0_m, eta1_0_s))
+    eta2_0 = sample("eta2_0", dist.Normal(eta2_0_m, eta2_0_s))
+    
+    # coefs
+    n_nets = len(A_list)
+    assert ((n_nets>0))
+
+    eta0_coefs = sample("eta0_coefs", dist.Normal(eta0_coefs_m, eta0_coefs_s).expand((n_nets,))) # (a,)
+    eta1_coefs = sample("eta1_coefs", dist.Normal(eta1_coefs_m, eta1_coefs_s).expand((n_nets,))) # (a,)
+    eta2_coefs = sample("eta2_coefs", dist.Normal(eta2_coefs_m, eta2_coefs_s).expand((n_nets,))) # (a,)
+    assert (len(eta0_coefs) == n_nets) 
+
+    with plate("features", p):
+        mu = sample("mu", dist.Normal(mu_m, mu_s))
+        sqrt_diag = sample("sqrt_diag", dist.InverseGamma(0.01, 0.01))
+    
+    
+    # means
+    tril_idx = jnp.tril_indices(n=p, k=-1, m=p)
+    tril_len = tril_idx[0].shape[0]
+    A_tril_arr = jnp.array([A[tril_idx] for A in A_list]) # (a, p, p)
+
+    A_tril_mean0 = 0.
+    for coef, A in zip(eta0_coefs,A_tril_arr):
+        A_tril_mean0 += coef*A
+    # A_tril_mean0 = deterministic("A_tril_mean0", A_tril_mean0)
+
+    A_tril_mean1 = 0.
+    for coef, A in zip(eta1_coefs,A_tril_arr):
+        A_tril_mean1 += coef*A
+    # A_tril_mean1 = deterministic("A_tril_mean1", A_tril_mean1)
+        
+    A_tril_mean2 = 0.
+    for coef, A in zip(eta2_coefs,A_tril_arr):
+        A_tril_mean2 += coef*A
+    # A_tril_mean2 = deterministic("A_tril_mean2", A_tril_mean2)
+    
+    # scale spike
+    scale_spike = sample("scale_spike", dist.InverseGamma(10, 0.5))
+    scale_spike = jnp.ones((tril_len,))*scale_spike
+    
+    # mean slab
+    mean_slab = eta0_0+A_tril_mean0
+    # mean_slab = deterministic("mean_slab", mean_slab)
+    
+    # scale slab
+    scale_slab = scale_spike*(1+jnp.exp(-eta1_0-A_tril_mean1))
+    # scale_slab = deterministic("scale_slab", scale_slab)
+    
+    # prob of being in the slab
+    w_slab = 1/(1+jnp.exp(-eta2_0 -A_tril_mean2)) # 45
+    # w_slab = deterministic("w_slab", w_slab)
+    
+    
+    u = sample("u", dist.Uniform(0.0, 1.0).expand((tril_len, )))
+    is_spike = my_utils.my_sigmoid(u, beta=100., alpha=w_slab)
+    
+    # corr mat
+    rho_tilde = numpyro.sample("rho_tilde", dist.Laplace(0., 1.).expand((tril_len,)))
+    rho_lt = numpyro.deterministic("rho_lt", is_spike*rho_tilde*scale_spike + 
+                                  (1-is_spike)*(rho_tilde*scale_slab + mean_slab))
+    
+    rho_mat_tril = jnp.zeros((p,p))
+    rho_mat_tril = rho_mat_tril.at[tril_idx].set(rho_lt)
+    rho = rho_mat_tril + rho_mat_tril.T + jnp.identity(p)
+    
+    factor("rho_factor", (ImproperUniform(constraints.corr_matrix, (), event_shape=(p,p)).log_prob(rho)).sum())
+    # rho = deterministic("rho", rho)
+    
+    theta = jnp.outer(sqrt_diag,sqrt_diag)*rho
+    # theta = deterministic("theta", theta)
+
+    # with plate("hist", n):
+    #     Y = sample("obs", dist.MultivariateNormal(mu, precision_matrix=theta), obs = Y)
+
+    # y_bar = Y.mean(axis=0) #p
+    # S_bar = Y.T@Y/n - jnp.outer(y_bar, y_bar) #(p,p)
+
+    factor("obs_factor", loglik(mu=mu, precision_matrix=theta, 
+                            y_bar=y_bar, S_bar=S_bar, n=n, p=p))
+
+
+    return {'y_bar':y_bar, 'S_bar':S_bar, 'n':n, "p":p, 'theta':theta, 'mu':mu, 'rho':rho, 
+            'eta1_0':eta1_0, 'eta1_coefs':eta1_coefs}
+#%%
+def NetworkSS_repr(A_list,
+                                      eta0_0_m=0., eta0_0_s=5., eta1_0_m=0., eta1_0_s=5., eta2_0_m=0., eta2_0_s=5.,
+              eta0_coefs_m=0., eta0_coefs_s=5., eta1_coefs_m=0., eta1_coefs_s=5., eta2_coefs_m=0., eta2_coefs_s=5., 
+           mu_m=0., mu_s=1., Y=None, n=None, p=None):
+
+    
+    # intercepts
+    eta0_0 = sample("eta0_0", dist.Normal(eta0_0_m, eta0_0_s))     
+    eta1_0 = sample("eta1_0", dist.Normal(eta1_0_m, eta1_0_s))
+    eta2_0 = sample("eta2_0", dist.Normal(eta2_0_m, eta2_0_s))
+    
+    # coefs
+    n_nets = len(A_list)
+    assert ((n_nets>0))
+
+    eta0_coefs = sample("eta0_coefs", dist.Normal(eta0_coefs_m, eta0_coefs_s).expand((n_nets,))) # (a,)
+    eta1_coefs = sample("eta1_coefs", dist.Normal(eta1_coefs_m, eta1_coefs_s).expand((n_nets,))) # (a,)
+    eta2_coefs = sample("eta2_coefs", dist.Normal(eta2_coefs_m, eta2_coefs_s).expand((n_nets,))) # (a,)
+    assert (len(eta0_coefs) == n_nets) 
+
+    with plate("features", p):
+        mu = sample("mu", dist.Normal(mu_m, mu_s))
+        sqrt_diag = sample("sqrt_diag", dist.InverseGamma(0.01, 0.01))
+    
+    
+    # means
+    tril_idx = jnp.tril_indices(n=p, k=-1, m=p)
+    tril_len = tril_idx[0].shape[0]
+    A_tril_arr = jnp.array([A[tril_idx] for A in A_list]) # (a, p, p)
+
+    A_tril_mean0 = 0.
+    for coef, A in zip(eta0_coefs,A_tril_arr):
+        A_tril_mean0 += coef*A
+    # A_tril_mean0 = deterministic("A_tril_mean0", A_tril_mean0)
+
+    A_tril_mean1 = 0.
+    for coef, A in zip(eta1_coefs,A_tril_arr):
+        A_tril_mean1 += coef*A
+    # A_tril_mean1 = deterministic("A_tril_mean1", A_tril_mean1)
+        
+    A_tril_mean2 = 0.
+    for coef, A in zip(eta2_coefs,A_tril_arr):
+        A_tril_mean2 += coef*A
+    # A_tril_mean2 = deterministic("A_tril_mean2", A_tril_mean2)
+    
+    # scale spike
+    scale_spike = sample("scale_spike", dist.InverseGamma(10, 0.5))
+    scale_spike = jnp.ones((tril_len,))*scale_spike
+    
+    # mean slab
+    mean_slab = eta0_0+A_tril_mean0
+    # mean_slab = deterministic("mean_slab", mean_slab)
+    
+    # scale slab
+    scale_slab = scale_spike*(1+jnp.exp(-eta1_0-A_tril_mean1))
+    # scale_slab = deterministic("scale_slab", scale_slab)
+    
+    # prob of being in the slab
+    w_slab = 1/(1+jnp.exp(-eta2_0 -A_tril_mean2)) # 45
+    # w_slab = deterministic("w_slab", w_slab)
+    
+    
+    u = sample("u", dist.Uniform(0.0, 1.0).expand((tril_len, )))
+    is_spike = my_utils.my_sigmoid(u, beta=100., alpha=w_slab)
+    
+    # corr mat
+    rho_tilde = numpyro.sample("rho_tilde", dist.Laplace(0., 1.).expand((tril_len,)))
+    rho_lt = numpyro.deterministic("rho_lt", is_spike*rho_tilde*scale_spike + 
+                                  (1-is_spike)*(rho_tilde*scale_slab + mean_slab))
+    
+    rho_mat_tril = jnp.zeros((p,p))
+    rho_mat_tril = rho_mat_tril.at[tril_idx].set(rho_lt)
+    rho = rho_mat_tril + rho_mat_tril.T + jnp.identity(p)
+    
+    factor("rho_factor", (ImproperUniform(constraints.corr_matrix, (), event_shape=(p,p)).log_prob(rho)).sum())
+    # rho = deterministic("rho", rho)
+    
+    theta = jnp.outer(sqrt_diag,sqrt_diag)*rho
+    # theta = deterministic("theta", theta)
+
+    with plate("hist", n):
+        Y = sample("obs", dist.MultivariateNormal(mu, precision_matrix=theta), obs = Y)
+
+
+    return {'Y':Y, 'n':n, "p":p, 'theta':theta, 'mu':mu, 'rho':rho, 
+            'eta1_0':eta1_0, 'eta1_coefs':eta1_coefs}

@@ -1,11 +1,11 @@
 # #%%
-# """Main script for training the model."""
-# import debugpy
-# debugpy.listen(5678)
-# print('Waiting for debugger')
-# debugpy.wait_for_client()
-# print('Debugger attached')
-# #%%
+"""Main script for training the model."""
+import debugpy
+debugpy.listen(5678)
+print('Waiting for debugger')
+debugpy.wait_for_client()
+print('Debugger attached')
+#%%
 # imports
 from absl import flags
 import pandas as pd
@@ -37,7 +37,7 @@ if not os.path.exists(data_save_path + 'Figures/'):
 # load models and functions
 import models
 import my_utils
-
+#%%
 # define flags
 FLAGS = flags.FLAGS
 flags.DEFINE_string('mcmc1_file', None, 'Name of 1mcmc file to generate plots from.')
@@ -81,13 +81,13 @@ outputs = {"NetworkSS_geo_sci":output_dict_ss_geo_sci }
         
 # with open(data_save_path + f'NetworkSS_geo_sci_1mcmc.sav', 'rb') as fr:
 #     res_ss_geo_sci = pickle.load(fr)
-
+#%%
 # with open(data_save_path + f'NetworkSS_1mcmc_p629_s1500.sav', 'rb') as fr:
 with open(data_save_path + FLAGS.mcmc1_file, 'rb') as fr:
     res_ss_geo_sci = pickle.load(fr)
 
 all_res = {"NetworkSS_geo_sci":res_ss_geo_sci}
-
+#%%
 for i, res in all_res.items():
     print(i)
     n_samples = res["eta1_0"].shape[0]
@@ -101,7 +101,9 @@ for i, res in all_res.items():
     outputs[i]["eta2_coefs"].append(res["eta2_coefs"].mean(0))
 
     mean_slab_chain = []
-    for eta0_0_s, eta0_coefs_s in zip(res["eta0_0"], res["eta0_coefs"]):
+    for e_ix, (eta0_0_s, eta0_coefs_s) in enumerate(zip(res["eta0_0"], res["eta0_coefs"])):
+        if e_ix%1000==0:
+            print('mean slab ', e_ix)
         A_tril_mean0_s = 0.
         for coef, A in zip(eta0_coefs_s,A_tril_arr):
             A_tril_mean0_s += coef*A
@@ -113,7 +115,9 @@ for i, res in all_res.items():
     outputs[i]["mean_slab"].append(mean_slab)
 
     scale_slab_chain = []
-    for eta1_0_s, eta1_coefs_s in zip(res["eta1_0"], res["eta1_coefs"]):
+    for e_ix, (eta1_0_s, eta1_coefs_s) in enumerate(zip(res["eta1_0"], res["eta1_coefs"])):
+        if e_ix%1000==0:
+            print('scale slab ', e_ix)
         A_tril_mean1_s = 0.
         for coef, A in zip(eta1_coefs_s,A_tril_arr):
             A_tril_mean1_s += coef*A
@@ -125,7 +129,9 @@ for i, res in all_res.items():
     outputs[i]["scale_slab"].append(scale_slab)
 
     w_slab_chain = []
-    for eta2_0_s, eta2_coefs_s in zip(res["eta2_0"], res["eta2_coefs"]):
+    for e_ix, (eta2_0_s, eta2_coefs_s) in enumerate(zip(res["eta2_0"], res["eta2_coefs"])):
+        if e_ix%1000==0:
+            print('w slab ', e_ix)
         A_tril_mean2_s = 0.
         for coef, A in zip(eta2_coefs_s,A_tril_arr):
             A_tril_mean2_s += coef*A
@@ -138,6 +144,8 @@ for i, res in all_res.items():
 
     prob_slab_all = []
     for cs in range(n_samples):
+        if cs%100==0:
+            print('cs ', cs)
         prob_slab = my_utils.get_prob_slab(rho_lt=res['rho_lt'][cs], 
                                         mean_slab=mean_slab_chain[cs], 
                                         scale_slab=scale_slab_chain[cs], 
@@ -262,8 +270,6 @@ cols = ["eta0_0", "eta1_0","eta2_0"]
 cols_2 = [ "eta0_coefs", "eta1_coefs", "eta2_coefs"]
 names = ['geo', 'sci', 'flights']
 etas_NetworkSS = {}
-for k in cols:
-    etas_NetworkSS[k] = all_res_2MCMC['NetworkSS_geo_sci']['fixed_params_dict'][k]
     
 for k in cols:
     etas_NetworkSS[k] = {'MAP': all_res_2MCMC['NetworkSS_geo_sci']['fixed_params_dict'][k],
@@ -554,7 +560,7 @@ ax.scatter(A_tril_sci, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black',
 #ax.set_xlim(-3,14)
 ax.set_xlim(-3,12)
 #ax.set_ylim(-0.5, 0.7)
-ax.set_ylim(-0.3, 0.7)
+ax.set_ylim(-0.7, 2)
 ax.set_xlabel('Facebook Connectivity Index')
 ax.set_ylabel('Partial correlation (Network-SS)')
 
@@ -586,7 +592,7 @@ ax.scatter(A_tril_geo, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black',
 #ax.set_xlim(-3,14)
 ax.set_xlim(-3,12)
 #ax.set_ylim(-0.5, 0.7)
-ax.set_ylim(-0.3, 0.7)
+ax.set_ylim(-0.7, 0.2)
 ax.set_xlabel('Geographical Distance Network')
 ax.set_ylabel('Partial correlation (Network-SS)')
 

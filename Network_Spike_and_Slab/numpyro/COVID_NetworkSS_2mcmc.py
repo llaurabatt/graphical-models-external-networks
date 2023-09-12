@@ -337,12 +337,12 @@ my_model_args = {"A_list":A_list, "eta0_0_m":eta0_0_m, "eta0_0_s":eta0_0_s,
          "eta2_coefs_m":eta2_coefs_m, "eta2_coefs_s":eta2_coefs_s,
          "mu_m":mu_m, "mu_s":mu_s} 
 
-if my_model == models.NetworkSS_repr_etaRepr_loglikRepr:
+if ((my_model == models.NetworkSS_repr_etaRepr_loglikRepr)|(my_model == models.NetworkSS_repr_loglikRepr)):
     y_bar = covid_vals.mean(axis=0) #p
     S_bar = covid_vals.T@covid_vals/n - jnp.outer(y_bar, y_bar) #(p,p)
     my_model_args.update({"y_bar":y_bar, "S_bar":S_bar, "n":n, "p":p,})
-elif my_model == models.NetworkSS_repr_etaRepr:
-    my_model_args.update({"Y":covid_vals,})
+elif ((my_model == models.NetworkSS_repr_etaRepr)|(my_model == models.NetworkSS_repr)):
+    my_model_args.update({"Y":covid_vals, "n":n, "p":p,})
 #%%
 u_init_cpu, rho_tilde_init_cpu, sqrt_diag_init_cpu = SVI_init_strategy_golazo_ss(A_list=A_list, mcmc_res=res, 
                                                                  fixed_params_dict=fixed_params_dict)

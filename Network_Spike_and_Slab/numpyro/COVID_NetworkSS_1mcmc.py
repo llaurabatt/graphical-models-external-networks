@@ -1,10 +1,10 @@
 # #%%
-# """Main script for training the model."""
-# import debugpy
-# debugpy.listen(5678)
-# print('Waiting for debugger')
-# debugpy.wait_for_client()
-# print('Debugger attached')
+"""Main script for training the model."""
+import debugpy
+debugpy.listen(5678)
+print('Waiting for debugger')
+debugpy.wait_for_client()
+print('Debugger attached')
 #%%
 # imports
 import sys
@@ -12,30 +12,14 @@ import os
 from absl import flags
 import re
 #%%
-import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import pickle
-from sklearn.neighbors import KernelDensity
 import jax
 import numpyro
 # numpyro.set_platform('cpu')
 print(jax.lib.xla_bridge.get_backend().platform)
 import jax.numpy as jnp
-from numpyro.infer import MCMC, NUTS 
-from jax.random import PRNGKey as Key
-from numpyro.infer import init_to_feasible, init_to_value
-from numpyro.handlers import condition, block
 import numpyro.infer.util
-from jax.random import PRNGKey as Key
 from numpyro.util import enable_x64
-from numpyro.infer import init_to_feasible, init_to_value
-import jax.nn as nn
-from numpyro import plate, sample,  factor
-import numpyro.distributions as dist
-from numpyro.distributions import ImproperUniform, constraints
-import numpyro.infer.util 
-from numpyro.primitives import deterministic
 from COVID_NetworkSS_1mcmc_init import mcmc1_init
 from COVID_NetworkSS_1mcmc_add import mcmc1_add
 #%%
@@ -45,9 +29,7 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'NetworkSS_results/'
-if not os.path.exists(data_save_path):
-    os.makedirs(data_save_path, mode=0o777)
+
 #%%
 # load models and functions
 import models
@@ -57,10 +39,11 @@ import my_utils
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('thinning', None, 'Thinning between MCMC samples.')
 flags.DEFINE_integer('n_samples', None, 'Number of total samples to run (excluding warmup).')
+flags.DEFINE_string('data_save_path', None, 'Path for saving results.')
 flags.DEFINE_string('Y', 'COVID_332_meta_pruned.csv', 'Name of file where data for dependent variable is stored.')
-flags.DEFINE_string('model', 'models.NetworkSS_repr_etaRepr_loglikRepr', 'Name of model to be run.')
+flags.DEFINE_string('model', 'models.NetworkSS_repr_loglikRepr', 'Name of model to be run.')
 flags.DEFINE_multi_string('network_list', ['GEO_meta_clean_332.npy', 'SCI_meta_clean_332.npy', 'flights_meta_clean_332.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
-flags.mark_flags_as_required(['n_samples', 'thinning'])
+flags.mark_flags_as_required(['n_samples', 'thinning', 'data_save_path'])
 FLAGS(sys.argv)
 
 
@@ -70,9 +53,18 @@ print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
 n_samples = FLAGS.n_samples
 my_model = eval(FLAGS.model)
 thinning = FLAGS.thinning
+batch_size = 500
 covid_vals_name = FLAGS.Y
 network_names = FLAGS.network_list
 print(network_names)
+print(FLAGS.model)
+
+
+data_save_path = FLAGS.data_save_path
+if not os.path.exists(data_save_path):
+    os.makedirs(data_save_path, mode=0o777)
+print(f'Save in {data_save_path}')
+
 # load data
 covid_vals = jnp.array(pd.read_csv(data_path + covid_vals_name, index_col='Unnamed: 0').values)
 geo_clean = jnp.array(jnp.load(data_path + network_names[0]))
@@ -84,7 +76,14 @@ flights_clean = jnp.array(jnp.load(data_path + network_names[2]))
 # sci_clean = sci_clean[:100, :100].copy()
 A_list = [geo_clean, sci_clean, flights_clean]
 
-
+mcmc_args = {"A_list":A_list, 
+                "eta0_0_m":0., "eta0_0_s":0.145, 
+        "eta0_coefs_m":0., "eta0_coefs_s":0.145,
+        "eta1_0_m":-2.197, "eta1_0_s":0.661, 
+        "eta1_coefs_m":0., "eta1_coefs_s":0.661,
+        "eta2_0_m":-9.368, "eta2_0_s":4.184, 
+        "eta2_coefs_m":0., "eta2_coefs_s":4.184,
+        "mu_m":0., "mu_s":1.} 
 
 def get_init_file(dir, checkpoint):
     '''Retrieve init file'''
@@ -110,18 +109,24 @@ if CP_init >= n_samples:
     print(f'Checkpoint at {CP_init} number of samples already exists.')
     sys.exit()
 elif (CP_init < 500):
-    mcmc1_init(my_model=my_model, thinning=thinning, covid_vals=covid_vals, A_list=A_list)
-    n_rounds = (n_samples-500)/400
-    batches = [400]*int(n_rounds) + [(n_samples-500)%400]
+    mcmc1_init(my_model=my_model, thinning=thinning, covid_vals=covid_vals,
+                my_model_args=mcmc_args,
+               root_dir=_ROOT_DIR, data_save_path=data_save_path)
+    n_rounds = (n_samples-500)/batch_size
+    batches = [batch_size]*int(n_rounds) + ([(n_samples-500)%batch_size] if (n_samples-500)%batch_size!=0 else [])
     for s_ix, s in enumerate(batches):
-        mcmc1_add(my_model=my_model, thinning=thinning, covid_vals=covid_vals, A_list=A_list,
-              checkpoint= 500 + sum(batches[:s_ix+1]) , n_warmup=50, n_samples=s)
+        mcmc1_add(my_model=my_model, thinning=thinning, covid_vals=covid_vals,
+                  my_model_args=mcmc_args,
+              checkpoint= 500 + sum(batches[:s_ix+1]) , n_warmup=1000, n_samples=s,
+              root_dir=_ROOT_DIR, data_save_path=data_save_path)
 else:
-    n_rounds = (n_samples-CP_init)/400
-    batches = [400]*int(n_rounds) + [(n_samples-CP_init)%400]
+    n_rounds = (n_samples-CP_init)/batch_size
+    batches = [batch_size]*int(n_rounds) + ([(n_samples-CP_init)%batch_size] if (n_samples-CP_init)%batch_size!=0 else []) 
     for s_ix, s in enumerate(batches):
-        mcmc1_add(my_model=my_model, thinning=thinning, covid_vals=covid_vals, A_list=A_list,
-              checkpoint=CP_init + sum(batches[:s_ix+1]), n_warmup=50, n_samples=s)
+        mcmc1_add(my_model=my_model, thinning=thinning, covid_vals=covid_vals,
+                  my_model_args=mcmc_args,
+              checkpoint=CP_init + sum(batches[:s_ix+1]), n_warmup=1000, n_samples=s,
+              root_dir=_ROOT_DIR, data_save_path=data_save_path)
  
 
 

@@ -60,11 +60,13 @@ import my_utils
 FLAGS = flags.FLAGS
 flags.DEFINE_boolean('search_MAP_best_params', False, 'If true, it will optimise kernel and bandwith for KDE on etas.')
 flags.DEFINE_integer('thinning', None, 'Thinning between MCMC samples.')
+flags.DEFINE_integer('SEED', None, 'Random seed.')
+flags.DEFINE_string('data_save_path', None, 'Path for saving results.')
 flags.DEFINE_integer('n_samples', 1000, 'Number of total samples to run (excluding warmup).')
 flags.DEFINE_string('model', 'models.NetworkSS_repr_etaRepr_loglikRepr', 'Name of model to be run.')
 flags.DEFINE_string('Y', 'COVID_332_meta_pruned.csv', 'Name of file where data for dependent variable is stored.')
 flags.DEFINE_multi_string('network_list', ['GEO_meta_clean_332.npy', 'SCI_meta_clean_332.npy', 'flights_meta_clean_332.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
-flags.mark_flags_as_required(['thinning'])
+flags.mark_flags_as_required(['thinning', 'SEED', 'data_save_path'])
 FLAGS(sys.argv)
 
 enable_x64(use_x64=True)
@@ -77,7 +79,15 @@ n_samples_2mcmc = FLAGS.n_samples
 thinning = FLAGS.thinning
 covid_vals_name = FLAGS.Y
 network_names = FLAGS.network_list
+SEED = FLAGS.SEED
 print(network_names)
+print(FLAGS.model)
+
+data_save_path = FLAGS.data_save_path
+if not os.path.exists(data_save_path):
+    os.makedirs(data_save_path, mode=0o777)
+print(f'Save in {data_save_path}')
+
 # load data
 covid_vals = jnp.array(pd.read_csv(data_path + covid_vals_name, index_col='Unnamed: 0').values)
 geo_clean = jnp.array(jnp.load(data_path + network_names[0]))
@@ -96,12 +106,24 @@ n,p = covid_vals.shape
 n_nets = len(A_list)
 print(f"NetworkSS, n {n}, p {p}, number of networks {n_nets}")
 #%%
-################## MAP ###############
+# get init file
+CPs=[]
 for f in os.listdir(data_save_path):
-    if 'aggregate.sav' in f: 
-        print(f'Init 2mcmc from {f}')
-        with open(data_save_path + f, 'rb') as fr:
-            res = jax.device_put(pickle.load(fr), cpus[0])
+    # if 'aggregate.sav' in f: 
+    if '1mcmc' in f: 
+        if re.search(r'(_CP)\d+', f):
+            CP = int(re.search(r'(_CP)\d+', f)[0][3:])
+            CPs.append(CP)
+CP_max = max(CPs)
+
+for f in os.listdir(data_save_path):
+    if '1mcmc' in f: 
+        if re.search(fr'.*_CP{CP_max}\.sav$', f):
+            print(f'Init 2mcmc from {f}')
+            with open(data_save_path + f, 'rb') as fr:
+                res = jax.device_put(pickle.load(fr), cpus[0])
+
+################## MAP ###############
 
 #%% 
 # Empircal Bayes marginal MAP estimates
@@ -226,11 +248,11 @@ for par in hyperpars:
 
 def SVI_init_strategy_golazo_ss(A_list, mcmc_res, fixed_params_dict):
 
-    all_chains = jnp.hstack([mcmc_res['eta0_0'], #[:,None], 
+    all_chains = jnp.hstack([mcmc_res['eta0_0'][:,None], 
                              mcmc_res['eta0_coefs'],
-                             mcmc_res['eta1_0'], #[:,None], 
+                             mcmc_res['eta1_0'][:,None], 
                              mcmc_res['eta1_coefs'],
-                             mcmc_res['eta2_0'], #[:,None], 
+                             mcmc_res['eta2_0'][:,None], 
                              mcmc_res['eta2_coefs']])
 
     eta0_0_MAP = fixed_params_dict["eta0_0"]
@@ -286,7 +308,7 @@ def SVI_init_strategy_golazo_ss(A_list, mcmc_res, fixed_params_dict):
 
 #%%
 ## params
-n_warmup = 1000
+n_warmup = 3
 n_samples = n_samples_2mcmc
 n_batches = 1
 batch = int(n_samples/n_batches)
@@ -298,24 +320,28 @@ mu_fixed=jnp.zeros((p,))
 mu_m=0.
 mu_s=1.
 
-scale_spike_fixed =0.003
-
-eta0_0_m=0. 
-eta0_0_s=0.145
-eta0_coefs_m=0.
-eta0_coefs_s=0.145
-
-eta1_0_m=-2.197
-eta1_0_s=0.661
-eta1_coefs_m=0.
-eta1_coefs_s=0.661
-
-eta2_0_m=-9.368
-eta2_0_s=4.184
-eta2_coefs_m=0.
-eta2_coefs_s=4.184
+scale_spike_fixed =0.0033341
 
 #%%
+# my_model_args = {"A_list":A_list, 
+#                 "eta0_0_m":0., "eta0_0_s":0.145, 
+#         "eta0_coefs_m":0., "eta0_coefs_s":0.145,
+#         "eta1_0_m":-2.197, "eta1_0_s":0.661, 
+#         "eta1_coefs_m":0., "eta1_coefs_s":0.661,
+#         "eta2_0_m":-9.368, "eta2_0_s":4.184, 
+#         "eta2_coefs_m":0., "eta2_coefs_s":4.184,
+#         "mu_m":0., "mu_s":1.} 
+mcmc_args = {"A_list":A_list, 
+                "eta0_0_m":0., "eta0_0_s":0.0015864, 
+        "eta0_coefs_m":0., "eta0_coefs_s":0.0015864,
+        "eta1_0_m":-2.1972246, "eta1_0_s":0.3, 
+        "eta1_coefs_m":0., "eta1_coefs_s":0.3,
+        "eta2_0_m":-7.7894737, "eta2_0_s":1.0263158, 
+        "eta2_coefs_m":0., "eta2_coefs_s":1.0263158,
+        "mu_m":0., "mu_s":1.}
+
+
+
 fix_params = True
 fixed_params_dict = {"mu":mu_fixed, "scale_spike":scale_spike_fixed,
                      "eta0_0":etas_MAPs["eta0_0"], 
@@ -323,19 +349,29 @@ fixed_params_dict = {"mu":mu_fixed, "scale_spike":scale_spike_fixed,
                     "eta1_0":etas_MAPs["eta1_0"], 
                      "eta1_coefs":jnp.array(etas_MAPs["eta1_coefs"]),
                     "eta2_0":etas_MAPs["eta2_0"], 
-                     "eta2_coefs":jnp.array(etas_MAPs["eta2_coefs"])}
+                     "eta2_coefs":jnp.array(etas_MAPs["eta2_coefs"]),
+                      "tilde_eta0_0":(etas_MAPs["eta0_0"]-my_model_args["eta0_0_m"])/my_model_args["eta0_0_s"], 
+                     "tilde_eta0_coefs":(jnp.array(etas_MAPs["eta0_coefs"])-my_model_args["eta0_coefs_m"])/my_model_args["eta0_coefs_s"],
+                    "tilde_eta1_0":(etas_MAPs["eta1_0"]-my_model_args["eta1_0_m"])/my_model_args["eta1_0_s"], 
+                     "tilde_eta1_coefs":(jnp.array(etas_MAPs["eta1_coefs"])-my_model_args["eta1_coefs_m"])/my_model_args["eta1_coefs_s"],
+                    "tilde_eta2_0":(etas_MAPs["eta2_0"]-my_model_args["eta2_0_m"])/my_model_args["eta2_0_s"], 
+                     "tilde_eta2_coefs":(jnp.array(etas_MAPs["eta2_coefs"])-my_model_args["eta2_coefs_m"])/my_model_args["eta2_coefs_s"]}
 
-blocked_params_list = ["mu", "scale_spike", "eta0_0", "eta0_coefs", "eta1_0", "eta1_coefs", 
+blocked_params_list = ["mu", "scale_spike", 
+                       "tilde_eta0_0", "tilde_eta0_coefs", "tilde_eta1_0", "tilde_eta1_coefs", 
+                       "tilde_eta2_0", "tilde_eta2_coefs",
+                       "eta0_0", "eta0_coefs", "eta1_0", "eta1_coefs", 
                        "eta2_0", "eta2_coefs"]
 
 
-my_model_args = {"A_list":A_list, "eta0_0_m":eta0_0_m, "eta0_0_s":eta0_0_s, 
-         "eta0_coefs_m":eta0_coefs_m, "eta0_coefs_s":eta0_coefs_s,
-         "eta1_0_m":eta1_0_m, "eta1_0_s":eta1_0_s, 
-         "eta1_coefs_m":eta1_coefs_m, "eta1_coefs_s":eta1_coefs_s,
-         "eta2_0_m":eta2_0_m, "eta2_0_s":eta2_0_s, 
-         "eta2_coefs_m":eta2_coefs_m, "eta2_coefs_s":eta2_coefs_s,
-         "mu_m":mu_m, "mu_s":mu_s} 
+my_model_args = {"A_list":A_list, 
+                "eta0_0_m":0., "eta0_0_s":0.145, 
+        "eta0_coefs_m":0., "eta0_coefs_s":0.145,
+        "eta1_0_m":-2.197, "eta1_0_s":0.661, 
+        "eta1_coefs_m":0., "eta1_coefs_s":0.661,
+        "eta2_0_m":-9.368, "eta2_0_s":4.184, 
+        "eta2_coefs_m":0., "eta2_coefs_s":4.184,
+        "mu_m":0., "mu_s":1.} 
 
 if ((my_model == models.NetworkSS_repr_etaRepr_loglikRepr)|(my_model == models.NetworkSS_repr_loglikRepr)):
     y_bar = covid_vals.mean(axis=0) #p
@@ -362,8 +398,8 @@ else:
 #%%    
 
 nuts_kernel = NUTS(my_model_run, init_strategy=my_init_strategy, dense_mass=is_dense)
-mcmc = MCMC(nuts_kernel, num_warmup=n_warmup, num_samples=batch)
-mcmc.run(rng_key = Key(5), **my_model_args,
+mcmc = MCMC(nuts_kernel, num_warmup=n_warmup, num_samples=batch, thinning=thinning)
+mcmc.run(rng_key = Key(SEED), **my_model_args,
         extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state'))
 # for b in range(n_batches-1):
 #     sample_batch = mcmc.get_samples()
@@ -375,13 +411,13 @@ mcmc.run(rng_key = Key(5), **my_model_args,
 # %%git 
 
 
-mask = (jnp.arange(n_samples)%thinning==0)
+# mask = (jnp.arange(n_samples)%thinning==0)
 s = jax.device_put(mcmc.get_samples(), cpus[0])
 # why doesn't the following work with dictionary comprehension?
-ss = {}
-for k,v in s.items():
-    ss[k] = v[mask]
+# ss = {}
+# for k,v in s.items():
+#     ss[k] = v[mask]
 f_dict = jax.device_put(fixed_params_dict, cpus[0])
-ss.update({'fixed_params_dict':f_dict})
+s.update({'fixed_params_dict':f_dict})
 with open(data_save_path + f'NetworkSS_2mcmc_p{p}_w{n_warmup}_s{n_samples}.sav' , 'wb') as f:
-    pickle.dump((ss), f)
+    pickle.dump((s), f)

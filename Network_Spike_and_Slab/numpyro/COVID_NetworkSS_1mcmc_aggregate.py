@@ -27,17 +27,17 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'NetworkSS_results/'
+data_save_path = _ROOT_DIR + 'NetworkSS_results_loglikrepr_1000w/'
 if not os.path.exists(data_save_path):
     os.makedirs(data_save_path, mode=0o777)
 
 # define flags
-FLAGS = flags.FLAGS
-flags.DEFINE_integer('p', None, 'dimension of each observation')
-flags.mark_flags_as_required(['p'])
-FLAGS(sys.argv)
+# FLAGS = flags.FLAGS
+# flags.DEFINE_integer('p', None, 'dimension of each observation')
+# flags.mark_flags_as_required(['p'])
+# FLAGS(sys.argv)
 # %%
-p = FLAGS.p
+# p = FLAGS.p
 
 CP_files = {}
 for f in os.listdir(data_save_path):
@@ -67,10 +67,10 @@ for cp_ix, (k,v) in enumerate(sorted(CP_files.items())):
 sampless = {}
 for k,v in samples.items():
     # print(k)
-    try:
-        sampless[k] = np.vstack(np.array(v, dtype=object))
-    except:
-        sampless[k] = np.vstack(np.array([s[:,None] for s in v], dtype=object))
+    # try:
+    #     sampless[k] = np.vstack(np.array(v, dtype=object))
+    # except:
+    sampless[k] = np.vstack(np.array([s[:,None] for s in v], dtype=object))
 del samples
 # sampless = {k:np.vstack(np.array(v, dtype=object)) for k,v in samples.items()}
 # %%
@@ -78,3 +78,4 @@ tot_samples = sampless[k].shape[0]
 print(tot_samples)
 with open(data_save_path + f'NetworkSS_1mcmc_p{p}_s{tot_samples}_aggregate.sav' , 'wb') as f:
     pickle.dump((sampless), f)
+# %%

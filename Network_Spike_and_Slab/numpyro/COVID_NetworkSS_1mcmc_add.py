@@ -107,7 +107,7 @@ def mcmc1_add(
     #%%
     fix_params=True
     mu_fixed=jnp.zeros((p,))
-    scale_spike_fixed =0.003
+    scale_spike_fixed =0.0033341
     fixed_params_dict = {"scale_spike":scale_spike_fixed, "mu":mu_fixed}
     blocked_params_list = ["scale_spike", "mu"]
 
@@ -118,18 +118,18 @@ def mcmc1_add(
                                                 'u':jax.device_put(res['u'][-1], gpus[0]),
                                                 'mu':mu_fixed, 
                                                 'sqrt_diag':jax.device_put(res['sqrt_diag'][-1], gpus[0]), 
-                                                'eta0_0':jax.device_put(res['eta0_0'][-1], gpus[0]),
-                                                'eta1_0':jax.device_put(res['eta1_0'][-1], gpus[0]),
-                                                'eta2_0':jax.device_put(res['eta2_0'][-1], gpus[0]),                                     
-                                                'eta0_coefs':jax.device_put(res['eta0_coefs'][-1], gpus[0]),
-                                                'eta1_coefs':jax.device_put(res['eta1_coefs'][-1], gpus[0]),
-                                                'eta2_coefs':jax.device_put(res['eta2_coefs'][-1], gpus[0]),})
-                                                # 'tilde_eta0_0':jax.device_put(res['tilde_eta0_0'][-1], gpus[0]),
-                                                # 'tilde_eta1_0':jax.device_put(res['tilde_eta1_0'][-1], gpus[0]),
-                                                # 'tilde_eta2_0':jax.device_put(res['tilde_eta2_0'][-1], gpus[0]),                                     
-                                                # 'tilde_eta0_coefs':jax.device_put(res['tilde_eta0_coefs'][-1], gpus[0]),
-                                                # 'tilde_eta1_coefs':jax.device_put(res['tilde_eta1_coefs'][-1], gpus[0]),
-                                                # 'tilde_eta2_coefs':jax.device_put(res['tilde_eta2_coefs'][-1], gpus[0]),})
+                                                # 'eta0_0':jax.device_put(res['eta0_0'][-1], gpus[0]),
+                                                # 'eta1_0':jax.device_put(res['eta1_0'][-1], gpus[0]),
+                                                # 'eta2_0':jax.device_put(res['eta2_0'][-1], gpus[0]),                                     
+                                                # 'eta0_coefs':jax.device_put(res['eta0_coefs'][-1], gpus[0]),
+                                                # 'eta1_coefs':jax.device_put(res['eta1_coefs'][-1], gpus[0]),
+                                                # 'eta2_coefs':jax.device_put(res['eta2_coefs'][-1], gpus[0]),})
+                                                'tilde_eta0_0':jax.device_put(res['tilde_eta0_0'][-1], gpus[0]),
+                                                'tilde_eta1_0':jax.device_put(res['tilde_eta1_0'][-1], gpus[0]),
+                                                'tilde_eta2_0':jax.device_put(res['tilde_eta2_0'][-1], gpus[0]),                                     
+                                                'tilde_eta0_coefs':jax.device_put(res['tilde_eta0_coefs'][-1], gpus[0]),
+                                                'tilde_eta1_coefs':jax.device_put(res['tilde_eta1_coefs'][-1], gpus[0]),
+                                                'tilde_eta2_coefs':jax.device_put(res['tilde_eta2_coefs'][-1], gpus[0]),})
 
 
 
@@ -151,7 +151,7 @@ def mcmc1_add(
     #%%    
 
     nuts_kernel = NUTS(my_model_run, init_strategy=my_init_strategy, dense_mass=is_dense)
-    mcmc = MCMC(nuts_kernel, num_warmup=n_warmup, num_samples=batch)
+    mcmc = MCMC(nuts_kernel, num_warmup=n_warmup, num_samples=batch, thinning=thinning)
     mcmc.run(rng_key = Key(8), **my_model_args,
             extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state'))
     # for b in range(n_batches-1):
@@ -163,12 +163,12 @@ def mcmc1_add(
 
     # %%
 
-    mask = (jnp.arange(n_samples)%thinning==0)
+    # mask = (jnp.arange(n_samples)%thinning==0)
     s = jax.device_put(mcmc.get_samples(), cpus[0])
     # why doesn't the following work with dictionary comprehension?
-    ss = {}
-    for k,v in s.items():
-        ss[k] = v[mask]
+    # ss = {}
+    # for k,v in s.items():
+    #     ss[k] = v[mask]
     with open(data_save_path + f'NetworkSS_1mcmc_p{p}_w{n_warmup}_s{n_samples}_CP{checkpoint}.sav' , 'wb') as f:
-        pickle.dump((ss), f)
+        pickle.dump((s), f)
 

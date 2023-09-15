@@ -47,11 +47,12 @@ cpus = jax.devices("cpu")
 
 #%%
 def mcmc1_init(covid_vals,
-               A_list,
                my_model,
                my_model_args,
                root_dir,
                data_save_path,
+               seed,
+               init_strategy:Optional[str]='init_to_value',
                thinning:Optional[int]=0,
         ):
 
@@ -65,14 +66,14 @@ def mcmc1_init(covid_vals,
     import my_utils
     #%%
     n,p = covid_vals.shape
-    n_nets = len(A_list)
+    n_nets = len(my_model_args['A_list'])
     print(f"NetworkSS, n {n}, p {p}, number of networks {n_nets}")
     #%%
 
     #%%
     ## params
     n_warmup = 1000
-    n_samples = 500
+    n_samples = 11000
     n_batches = 1
     batch = int(n_samples/n_batches)
 
@@ -82,7 +83,7 @@ def mcmc1_init(covid_vals,
     ## first element for p=10, second element for p=50
     fix_params=True
     mu_fixed=jnp.zeros((p,))
-    scale_spike_fixed =0.003
+    scale_spike_fixed =0.0033341
     fixed_params_dict = {"scale_spike":scale_spike_fixed, "mu":mu_fixed}
     blocked_params_list = ["scale_spike", "mu"]
 
@@ -92,24 +93,27 @@ def mcmc1_init(covid_vals,
     sqrt_diag_init = jnp.ones((p,))
 
     # init strategy
-    my_init_strategy = init_to_value(values={'rho_tilde':rho_tilde_init, 
-                                                'u':u_init,
-                                                'mu':mu_init, 
-                                                'sqrt_diag':sqrt_diag_init, 
-                                                'eta0_0':my_model_args['eta0_0_m'],
-                                                'eta1_0':my_model_args['eta1_0_m'],
-                                                'eta2_0':my_model_args['eta2_0_m'],                                     
-                                                'eta0_coefs':jnp.array([my_model_args['eta0_coefs_m']]*n_nets),
-                                                'eta1_coefs':jnp.array([my_model_args['eta1_coefs_m']]*n_nets),
-                                                'eta2_coefs':jnp.array([my_model_args['eta2_coefs_m']]*n_nets),})
-                                                # 'tilde_eta0_0':0.,
-                                                # 'tilde_eta1_0':0.,
-                                                # 'tilde_eta2_0':0.,                                     
-                                                # 'tilde_eta0_coefs':jnp.array([0.]*n_nets),
-                                                # 'tilde_eta1_coefs':jnp.array([0.]*n_nets),
-                                                # 'tilde_eta2_coefs':jnp.array([0.]*n_nets),})
-
-
+    if init_strategy=='init_to_value':
+        my_init_strategy = init_to_value(values={'rho_tilde':rho_tilde_init, 
+                                                    'u':u_init,
+                                                    'mu':mu_init, 
+                                                    'sqrt_diag':sqrt_diag_init, 
+                                                    # 'eta0_0':my_model_args['eta0_0_m'],
+                                                    # 'eta1_0':my_model_args['eta1_0_m'],
+                                                    # 'eta2_0':my_model_args['eta2_0_m'],                                     
+                                                    # 'eta0_coefs':jnp.array([my_model_args['eta0_coefs_m']]*n_nets),
+                                                    # 'eta1_coefs':jnp.array([my_model_args['eta1_coefs_m']]*n_nets),
+                                                    # 'eta2_coefs':jnp.array([my_model_args['eta2_coefs_m']]*n_nets),})
+                                                    'tilde_eta0_0':0.,
+                                                    'tilde_eta1_0':0.,
+                                                    'tilde_eta2_0':0.,                                     
+                                                    'tilde_eta0_coefs':jnp.array([0.]*n_nets),
+                                                    'tilde_eta1_coefs':jnp.array([0.]*n_nets),
+                                                    'tilde_eta2_coefs':jnp.array([0.]*n_nets),})
+    elif init_strategy=='init_to_feasible':
+        my_init_strategy = init_to_feasible()
+    else:
+        raise ValueError("Init strategy should be set to 'init_to_value' or 'init_to_feasible")
 
 
     if ((my_model == models.NetworkSS_repr_etaRepr_loglikRepr)|(my_model == models.NetworkSS_repr_loglikRepr)):
@@ -129,8 +133,8 @@ def mcmc1_init(covid_vals,
     #%%    
 
     nuts_kernel = NUTS(my_model_run, init_strategy=my_init_strategy, dense_mass=is_dense)
-    mcmc = MCMC(nuts_kernel, num_warmup=n_warmup, num_samples=batch)
-    mcmc.run(rng_key = Key(3), **my_model_args,
+    mcmc = MCMC(nuts_kernel, num_warmup=n_warmup, num_samples=batch, thinning=thinning)
+    mcmc.run(rng_key = Key(seed), **my_model_args,
             extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state'))
     # for b in range(n_batches-1):
     #     sample_batch = mcmc.get_samples()
@@ -141,12 +145,13 @@ def mcmc1_init(covid_vals,
 
     # %%
 
-    mask = (jnp.arange(n_samples)%thinning==0)
+    # mask = (jnp.arange(n_samples)%thinning==0)
     s = jax.device_put(mcmc.get_samples(), cpus[0])
+    s.update({'potential_energy':mcmc.get_extra_fields()['potential_energy']})
     # why doesn't the following work with dictionary comprehension?
-    ss = {}
-    for k,v in s.items():
-        ss[k] = v[mask]
+    # ss = {}
+    # for k,v in s.items():
+    #     ss[k] = v[mask]
 
     with open(data_save_path + f'NetworkSS_1mcmc_p{p}_w{n_warmup}_s{n_samples}_CP{n_samples}.sav' , 'wb') as f:
-        pickle.dump((ss), f)
+        pickle.dump((s), f)

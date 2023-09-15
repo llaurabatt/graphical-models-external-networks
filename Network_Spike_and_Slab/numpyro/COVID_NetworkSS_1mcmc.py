@@ -1,10 +1,10 @@
 # #%%
 """Main script for training the model."""
-import debugpy
-debugpy.listen(5678)
-print('Waiting for debugger')
-debugpy.wait_for_client()
-print('Debugger attached')
+# import debugpy
+# debugpy.listen(5678)
+# print('Waiting for debugger')
+# debugpy.wait_for_client()
+# print('Debugger attached')
 #%%
 # imports
 import sys
@@ -40,10 +40,12 @@ FLAGS = flags.FLAGS
 flags.DEFINE_integer('thinning', None, 'Thinning between MCMC samples.')
 flags.DEFINE_integer('n_samples', None, 'Number of total samples to run (excluding warmup).')
 flags.DEFINE_string('data_save_path', None, 'Path for saving results.')
+flags.DEFINE_integer('SEED', None, 'Random seed.')
 flags.DEFINE_string('Y', 'COVID_332_meta_pruned.csv', 'Name of file where data for dependent variable is stored.')
 flags.DEFINE_string('model', 'models.NetworkSS_repr_loglikRepr', 'Name of model to be run.')
+flags.DEFINE_string('init_strategy', 'init_to_value', "Either 'init_to_value' (default) or 'init_to_feasible'.")
 flags.DEFINE_multi_string('network_list', ['GEO_meta_clean_332.npy', 'SCI_meta_clean_332.npy', 'flights_meta_clean_332.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
-flags.mark_flags_as_required(['n_samples', 'thinning', 'data_save_path'])
+flags.mark_flags_as_required(['n_samples', 'thinning', 'data_save_path', 'SEED'])
 FLAGS(sys.argv)
 
 
@@ -55,6 +57,8 @@ my_model = eval(FLAGS.model)
 thinning = FLAGS.thinning
 batch_size = 500
 covid_vals_name = FLAGS.Y
+SEED = FLAGS.SEED
+init_strategy = FLAGS.init_strategy
 network_names = FLAGS.network_list
 print(network_names)
 print(FLAGS.model)
@@ -76,13 +80,21 @@ flights_clean = jnp.array(jnp.load(data_path + network_names[2]))
 # sci_clean = sci_clean[:100, :100].copy()
 A_list = [geo_clean, sci_clean, flights_clean]
 
+# mcmc_args = {"A_list":A_list, 
+#                 "eta0_0_m":0., "eta0_0_s":0.145, 
+#         "eta0_coefs_m":0., "eta0_coefs_s":0.145,
+#         "eta1_0_m":-2.197, "eta1_0_s":0.661, 
+#         "eta1_coefs_m":0., "eta1_coefs_s":0.661,
+#         "eta2_0_m":-9.368, "eta2_0_s":4.184, 
+#         "eta2_coefs_m":0., "eta2_coefs_s":4.184,
+#         "mu_m":0., "mu_s":1.} 
 mcmc_args = {"A_list":A_list, 
-                "eta0_0_m":0., "eta0_0_s":0.145, 
-        "eta0_coefs_m":0., "eta0_coefs_s":0.145,
-        "eta1_0_m":-2.197, "eta1_0_s":0.661, 
-        "eta1_coefs_m":0., "eta1_coefs_s":0.661,
-        "eta2_0_m":-9.368, "eta2_0_s":4.184, 
-        "eta2_coefs_m":0., "eta2_coefs_s":4.184,
+                "eta0_0_m":0., "eta0_0_s":0.0015864, 
+        "eta0_coefs_m":0., "eta0_coefs_s":0.0015864,
+        "eta1_0_m":-2.1972246, "eta1_0_s":0.3, 
+        "eta1_coefs_m":0., "eta1_coefs_s":0.3,
+        "eta2_0_m":-7.7894737, "eta2_0_s":1.0263158, 
+        "eta2_coefs_m":0., "eta2_coefs_s":1.0263158,
         "mu_m":0., "mu_s":1.} 
 
 def get_init_file(dir, checkpoint):
@@ -105,28 +117,33 @@ try:
 except:
     CP_init = 0
 
-if CP_init >= n_samples:
-    print(f'Checkpoint at {CP_init} number of samples already exists.')
-    sys.exit()
-elif (CP_init < 500):
-    mcmc1_init(my_model=my_model, thinning=thinning, covid_vals=covid_vals,
-                my_model_args=mcmc_args,
-               root_dir=_ROOT_DIR, data_save_path=data_save_path)
-    n_rounds = (n_samples-500)/batch_size
-    batches = [batch_size]*int(n_rounds) + ([(n_samples-500)%batch_size] if (n_samples-500)%batch_size!=0 else [])
-    for s_ix, s in enumerate(batches):
-        mcmc1_add(my_model=my_model, thinning=thinning, covid_vals=covid_vals,
-                  my_model_args=mcmc_args,
-              checkpoint= 500 + sum(batches[:s_ix+1]) , n_warmup=1000, n_samples=s,
-              root_dir=_ROOT_DIR, data_save_path=data_save_path)
-else:
-    n_rounds = (n_samples-CP_init)/batch_size
-    batches = [batch_size]*int(n_rounds) + ([(n_samples-CP_init)%batch_size] if (n_samples-CP_init)%batch_size!=0 else []) 
-    for s_ix, s in enumerate(batches):
-        mcmc1_add(my_model=my_model, thinning=thinning, covid_vals=covid_vals,
-                  my_model_args=mcmc_args,
-              checkpoint=CP_init + sum(batches[:s_ix+1]), n_warmup=1000, n_samples=s,
-              root_dir=_ROOT_DIR, data_save_path=data_save_path)
+mcmc1_init(my_model=my_model, thinning=thinning, covid_vals=covid_vals,
+        my_model_args=mcmc_args,
+        root_dir=_ROOT_DIR, data_save_path=data_save_path, seed=SEED, init_strategy=init_strategy)
+
+
+# if CP_init >= n_samples:
+#     print(f'Checkpoint at {CP_init} number of samples already exists.')
+#     sys.exit()
+# elif (CP_init < 500):
+#     mcmc1_init(my_model=my_model, thinning=thinning, covid_vals=covid_vals,
+#                 my_model_args=mcmc_args,
+#                root_dir=_ROOT_DIR, data_save_path=data_save_path, seed=SEED, init_strategy=init_strategy)
+#     n_rounds = (n_samples-500)/batch_size
+#     batches = [batch_size]*int(n_rounds) + ([(n_samples-500)%batch_size] if (n_samples-500)%batch_size!=0 else [])
+#     for s_ix, s in enumerate(batches):
+#         mcmc1_add(my_model=my_model, thinning=thinning, covid_vals=covid_vals,
+#                   my_model_args=mcmc_args,
+#               checkpoint= 500 + sum(batches[:s_ix+1]) , n_warmup=1000, n_samples=s,
+#               root_dir=_ROOT_DIR, data_save_path=data_save_path)
+# else:
+#     n_rounds = (n_samples-CP_init)/batch_size
+#     batches = [batch_size]*int(n_rounds) + ([(n_samples-CP_init)%batch_size] if (n_samples-CP_init)%batch_size!=0 else []) 
+#     for s_ix, s in enumerate(batches):
+#         mcmc1_add(my_model=my_model, thinning=thinning, covid_vals=covid_vals,
+#                   my_model_args=mcmc_args,
+#               checkpoint=CP_init + sum(batches[:s_ix+1]), n_warmup=1000, n_samples=s,
+#               root_dir=_ROOT_DIR, data_save_path=data_save_path)
  
 
 

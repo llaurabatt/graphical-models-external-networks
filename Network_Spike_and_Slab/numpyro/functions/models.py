@@ -373,9 +373,9 @@ def NetworkSS_repr_etaRepr(A_list, eta0_0_m=0., eta0_0_s=5., eta1_0_m=0., eta1_0
 
 #%%
 def NetworkSS_repr_etaRepr_loglikRepr(A_list,
-                                      eta0_0_m=0., eta0_0_s=5., eta1_0_m=0., eta1_0_s=5., eta2_0_m=0., eta2_0_s=5.,
-              eta0_coefs_m=0., eta0_coefs_s=5., eta1_coefs_m=0., eta1_coefs_s=5., eta2_coefs_m=0., eta2_coefs_s=5., 
-           mu_m=0., mu_s=1., y_bar=None, S_bar=None, n=None, p=None):
+                                      eta0_0_m, eta0_0_s, eta1_0_m, eta1_0_s, eta2_0_m, eta2_0_s,
+              eta0_coefs_m, eta0_coefs_s, eta1_coefs_m, eta1_coefs_s, eta2_coefs_m, eta2_coefs_s, 
+           mu_m, mu_s, y_bar=None, S_bar=None, n=None, p=None):
 
     
     # intercepts

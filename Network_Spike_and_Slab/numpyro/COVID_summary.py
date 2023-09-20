@@ -29,9 +29,7 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'NetworkSS_results/'
-if not os.path.exists(data_save_path):
-    os.makedirs(data_save_path, mode=0o777)
+data_save_path = _ROOT_DIR + 'MERGE3_6_NetworkSS_results_etarepr_loglikrepr_newprior/'
 if not os.path.exists(data_save_path + 'Figures/'):
     os.makedirs(data_save_path + 'Figures/', mode=0o777)
 # load models and functions
@@ -40,11 +38,13 @@ import my_utils
 #%%
 # define flags
 FLAGS = flags.FLAGS
-flags.DEFINE_string('mcmc1_file', None, 'Name of 1mcmc file to generate plots from.')
-flags.DEFINE_string('mcmc2_file', None, 'Name of 2mcmc file to generate plots from.')
+flags.DEFINE_string('mcmc1_path', None, '1mcmc path to generate plots from.')
+flags.DEFINE_string('mcmc2_path', None, '2mcmc path to generate plots from.')
+flags.DEFINE_boolean('get_probs', True, 'Compute mean slab, w slab, prob slab for 1mcmc.')
+flags.DEFINE_string('data_save_path', data_save_path, 'Path where to save figure folder.')
 flags.DEFINE_string('Y', 'COVID_332_meta_pruned.csv', 'Name of file where data for dependent variable is stored.')
 flags.DEFINE_multi_string('network_list', ['GEO_meta_clean_332.npy', 'SCI_meta_clean_332.npy', 'flights_meta_clean_332.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
-flags.mark_flags_as_required(['mcmc1_file', 'mcmc2_file'])
+flags.mark_flags_as_required(['mcmc1_path', 'mcmc2_path'])
 FLAGS(sys.argv)
 
 # load data
@@ -83,92 +83,105 @@ outputs = {"NetworkSS_geo_sci":output_dict_ss_geo_sci }
 #     res_ss_geo_sci = pickle.load(fr)
 #%%
 # with open(data_save_path + f'NetworkSS_1mcmc_p629_s1500.sav', 'rb') as fr:
-with open(data_save_path + FLAGS.mcmc1_file, 'rb') as fr:
+# with open(data_save_path + FLAGS.mcmc1_file, 'rb') as fr:
+with open(FLAGS.mcmc1_path, 'rb') as fr:
     res_ss_geo_sci = pickle.load(fr)
+
+# rhos = pd.DataFrame(res_ss_geo_sci['rho_lt'])
+# rhos.to_csv(data_save_path + 'rho_lt_mcmc1.csv')
+# del rhos
 
 all_res = {"NetworkSS_geo_sci":res_ss_geo_sci}
 #%%
-for i, res in all_res.items():
-    print(i)
-    n_samples = res["eta1_0"].shape[0]
+if FLAGS.get_probs:
+    for i, res in all_res.items():
+        print(i)
+        n_samples = res["eta1_0"].shape[0]
 
-    outputs[i]["eta0_0"].append(res["eta0_0"].mean(0))
-    outputs[i]["eta1_0"].append(res["eta1_0"].mean(0))
-    outputs[i]["eta2_0"].append(res["eta2_0"].mean(0))
+        outputs[i]["eta0_0"].append(res["eta0_0"].mean(0))
+        outputs[i]["eta1_0"].append(res["eta1_0"].mean(0))
+        outputs[i]["eta2_0"].append(res["eta2_0"].mean(0))
 
-    outputs[i]["eta0_coefs"].append(res["eta0_coefs"].mean(0))
-    outputs[i]["eta1_coefs"].append(res["eta1_coefs"].mean(0))
-    outputs[i]["eta2_coefs"].append(res["eta2_coefs"].mean(0))
+        outputs[i]["eta0_coefs"].append(res["eta0_coefs"].mean(0))
+        outputs[i]["eta1_coefs"].append(res["eta1_coefs"].mean(0))
+        outputs[i]["eta2_coefs"].append(res["eta2_coefs"].mean(0))
 
-    mean_slab_chain = []
-    for e_ix, (eta0_0_s, eta0_coefs_s) in enumerate(zip(res["eta0_0"], res["eta0_coefs"])):
-        if e_ix%1000==0:
-            print('mean slab ', e_ix)
-        A_tril_mean0_s = 0.
-        for coef, A in zip(eta0_coefs_s,A_tril_arr):
-            A_tril_mean0_s += coef*A
-        mean_slab_s = eta0_0_s + A_tril_mean0_s
-        mean_slab_chain.append(mean_slab_s)
-    mean_slab_chain = jnp.array(mean_slab_chain)
-    all_res['NetworkSS_geo_sci'].update({"mean_slab":mean_slab_chain})
-    mean_slab = mean_slab_chain.mean(0)
-    outputs[i]["mean_slab"].append(mean_slab)
+        mean_slab_chain = []
+        for e_ix, (eta0_0_s, eta0_coefs_s) in enumerate(zip(res["eta0_0"], res["eta0_coefs"])):
+            if e_ix%1000==0:
+                print('mean slab ', e_ix)
+            A_tril_mean0_s = 0.
+            for coef, A in zip(eta0_coefs_s,A_tril_arr):
+                A_tril_mean0_s += coef*A
+            mean_slab_s = eta0_0_s + A_tril_mean0_s
+            mean_slab_chain.append(mean_slab_s)
+        mean_slab_chain = jnp.array(mean_slab_chain)
+        all_res['NetworkSS_geo_sci'].update({"mean_slab":mean_slab_chain})
+        mean_slab = mean_slab_chain.mean(0)
+        outputs[i]["mean_slab"].append(mean_slab)
 
-    scale_slab_chain = []
-    for e_ix, (eta1_0_s, eta1_coefs_s) in enumerate(zip(res["eta1_0"], res["eta1_coefs"])):
-        if e_ix%1000==0:
-            print('scale slab ', e_ix)
-        A_tril_mean1_s = 0.
-        for coef, A in zip(eta1_coefs_s,A_tril_arr):
-            A_tril_mean1_s += coef*A
-        scale_slab_s = scale_spike_fixed*(1+jnp.exp(-eta1_0_s-A_tril_mean1_s))
-        scale_slab_chain.append(scale_slab_s)
-    scale_slab_chain = jnp.array(scale_slab_chain)
-    all_res['NetworkSS_geo_sci'].update({"scale_slab":scale_slab_chain})
-    scale_slab = scale_slab_chain.mean(0)
-    outputs[i]["scale_slab"].append(scale_slab)
+        scale_slab_chain = []
+        for e_ix, (eta1_0_s, eta1_coefs_s) in enumerate(zip(res["eta1_0"], res["eta1_coefs"])):
+            if e_ix%1000==0:
+                print('scale slab ', e_ix)
+            A_tril_mean1_s = 0.
+            for coef, A in zip(eta1_coefs_s,A_tril_arr):
+                A_tril_mean1_s += coef*A
+            scale_slab_s = scale_spike_fixed*(1+jnp.exp(-eta1_0_s-A_tril_mean1_s))
+            scale_slab_chain.append(scale_slab_s)
+        scale_slab_chain = jnp.array(scale_slab_chain)
+        all_res['NetworkSS_geo_sci'].update({"scale_slab":scale_slab_chain})
+        scale_slab = scale_slab_chain.mean(0)
+        outputs[i]["scale_slab"].append(scale_slab)
 
-    w_slab_chain = []
-    for e_ix, (eta2_0_s, eta2_coefs_s) in enumerate(zip(res["eta2_0"], res["eta2_coefs"])):
-        if e_ix%1000==0:
-            print('w slab ', e_ix)
-        A_tril_mean2_s = 0.
-        for coef, A in zip(eta2_coefs_s,A_tril_arr):
-            A_tril_mean2_s += coef*A
-        w_slab_s = 1/(1+jnp.exp(-eta2_0_s -A_tril_mean2_s)) 
-        w_slab_chain.append(w_slab_s)
-    w_slab_chain = jnp.array(w_slab_chain)
-    all_res['NetworkSS_geo_sci'].update({"w_slab":w_slab_chain})
-    w_slab = w_slab_chain.mean(0)
-    outputs[i]["w_slab"].append(w_slab)
+        w_slab_chain = []
+        for e_ix, (eta2_0_s, eta2_coefs_s) in enumerate(zip(res["eta2_0"], res["eta2_coefs"])):
+            if e_ix%1000==0:
+                print('w slab ', e_ix)
+            A_tril_mean2_s = 0.
+            for coef, A in zip(eta2_coefs_s,A_tril_arr):
+                A_tril_mean2_s += coef*A
+            w_slab_s = 1/(1+jnp.exp(-eta2_0_s -A_tril_mean2_s)) 
+            w_slab_chain.append(w_slab_s)
+        w_slab_chain = jnp.array(w_slab_chain)
+        all_res['NetworkSS_geo_sci'].update({"w_slab":w_slab_chain})
+        w_slab = w_slab_chain.mean(0)
+        outputs[i]["w_slab"].append(w_slab)
 
-    prob_slab_all = []
-    for cs in range(n_samples):
-        if cs%100==0:
-            print('cs ', cs)
-        prob_slab = my_utils.get_prob_slab(rho_lt=res['rho_lt'][cs], 
-                                        mean_slab=mean_slab_chain[cs], 
-                                        scale_slab=scale_slab_chain[cs], 
-                                        scale_spike=scale_spike_fixed, 
-                                        w_slab=w_slab_chain[cs], 
-                                        w_spike=(1-w_slab_chain)[cs])
-        prob_slab_all.append(prob_slab)
-    prob_slab_est = (jnp.array(prob_slab_all)).mean(0)    
-    nonzero_preds_5 = (prob_slab_est>0.5).astype(int)
-    nonzero_preds_95 = (prob_slab_est>0.95).astype(int)
+        prob_slab_all = []
+        for cs in range(n_samples):
+            if cs%100==0:
+                print('cs ', cs)
+            prob_slab = my_utils.get_prob_slab(rho_lt=res['rho_lt'][cs], 
+                                            mean_slab=mean_slab_chain[cs], 
+                                            scale_slab=scale_slab_chain[cs], 
+                                            scale_spike=scale_spike_fixed, 
+                                            w_slab=w_slab_chain[cs], 
+                                            w_spike=(1-w_slab_chain)[cs])
+            prob_slab_all.append(prob_slab)
+        prob_slab_est = (jnp.array(prob_slab_all)).mean(0)    
+        nonzero_preds_5 = (prob_slab_est>0.5).astype(int)
+        nonzero_preds_95 = (prob_slab_est>0.95).astype(int)
 
-    Pos_5 = jnp.where(nonzero_preds_5 == True)[0].shape[0]
-    Neg_5 = jnp.where(nonzero_preds_5 == False)[0].shape[0]
-  
-    Pos_95 = jnp.where(nonzero_preds_95 == True)[0].shape[0]
-    Neg_95 = jnp.where(nonzero_preds_95 == False)[0].shape[0]
+        Pos_5 = jnp.where(nonzero_preds_5 == True)[0].shape[0]
+        Neg_5 = jnp.where(nonzero_preds_5 == False)[0].shape[0]
+    
+        Pos_95 = jnp.where(nonzero_preds_95 == True)[0].shape[0]
+        Neg_95 = jnp.where(nonzero_preds_95 == False)[0].shape[0]
 
-    outputs[i]['Pos'].append(Pos_5)
-    outputs[i]['Neg'].append(Neg_5)
-    outputs[i]['Pos_95'].append(Pos_95)
-    outputs[i]['Neg_95'].append(Neg_95)
+        outputs[i]['Pos'].append(Pos_5)
+        outputs[i]['Neg'].append(Neg_5)
+        outputs[i]['Pos_95'].append(Pos_95)
+        outputs[i]['Neg_95'].append(Neg_95)
 
-outputs_1MCMC = outputs
+    outputs_1MCMC = outputs
+
+    with open(data_save_path + f'output_mcmc1.sav' , 'wb') as f:
+        pickle.dump((outputs_1MCMC), f)
+
+else:
+    with open(data_save_path + f'output_mcmc1.sav', 'rb') as fr:
+        outputs_1MCMC = pickle.load(fr)
 
 # 2MCMC
 
@@ -179,13 +192,17 @@ output_dict_ss_geo_sci = {"eta0_0":[],"eta0_coefs":[], "eta1_0":[],"eta1_coefs":
 outputs = {"NetworkSS_geo_sci":output_dict_ss_geo_sci}
 
 # with open(data_save_path + f'NetworkSS_2mcmc_p629_s1500.sav', 'rb') as fr:
-with open(data_save_path + FLAGS.mcmc2_file, 'rb') as fr:
+# with open(data_save_path + FLAGS.mcmc2_file, 'rb') as fr:
+with open(FLAGS.mcmc2_path, 'rb') as fr:
     mcmc2_ss_geo_sci = pickle.load(fr)
+
+# rhos = pd.DataFrame(mcmc2_ss_geo_sci['rho_lt'])
+# rhos.to_csv(data_save_path + 'rho_lt_mcmc2.csv')
+# del rhos
 
 
 all_res_2MCMC = {"NetworkSS_geo_sci":mcmc2_ss_geo_sci}
 for i, res in all_res_2MCMC.items():
-    print(i)
 
     n_samples = res["rho_lt"].shape[0]
 
@@ -348,11 +365,11 @@ def get_credible_interval(post_chain):
 
 
 df_MAP_dict = {'intercept':{'eta0_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta0_0'],3),
-                        'eta0_CI':get_credible_interval(res_ss_geo_sci['eta0_0']),
+                        'eta0_CI':get_credible_interval(res_ss_geo_sci['eta0_0'].squeeze()),
                         'eta1_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta1_0'],3),
-                        'eta1_CI':get_credible_interval(res_ss_geo_sci['eta1_0']),
+                        'eta1_CI':get_credible_interval(res_ss_geo_sci['eta1_0'].squeeze()),
                         'eta2_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta2_0'],3),
-                        'eta2_CI':get_credible_interval(res_ss_geo_sci['eta2_0']),},
+                        'eta2_CI':get_credible_interval(res_ss_geo_sci['eta2_0'].squeeze()),},
                
 'geo':{'eta0_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta0_coefs_geo'],3),
                         'eta0_CI':get_credible_interval(res_ss_geo_sci['eta0_coefs'][:,0]),
@@ -471,7 +488,7 @@ MODIFIED_df_flights = MODIFIED_df.round(decimals = 5)
 dfs = [MODIFIED_df_geo, MODIFIED_df_sci, MODIFIED_df_flights]
 df_names = ['geo', 'sci', 'flights']
 ticklabs = [MODIFIED_A_geo_mids_10, MODIFIED_A_sci_mids_10, MODIFIED_A_flights_mids_10 ]
-legendlabs = ['Geographical Distance Network', 'Facebook Connectivity Index', 'Flights Connectivity Network']
+legendlabs = ['Geographical Closeness Network', 'Facebook Connectivity Index', 'Flights Connectivity Network']
 colors = ['black', 'gray', 'blue']
 
 
@@ -522,7 +539,7 @@ MODIFIED_df_flights = MODIFIED_df.round(decimals = 5)
 dfs = [MODIFIED_df_geo, MODIFIED_df_sci, MODIFIED_df_flights]
 df_names = ['geo', 'sci', 'flights']
 ticklabs = [MODIFIED_A_geo_mids_10, MODIFIED_A_sci_mids_10, MODIFIED_A_flights_mids_10 ]
-legendlabs = ['Geographical Distance Network', 'Facebook Connectivity Index', 'Flights Connectivity Network']
+legendlabs = ['Geographical Closeness Network', 'Facebook Connectivity Index', 'Flights Connectivity Network']
 colors = ['black', 'gray', 'blue']
 
 for df_ix, df in enumerate(dfs):
@@ -559,8 +576,7 @@ for A_ix, (A_k, vals) in enumerate(A_sci_ints_10.items()):
 ax.scatter(A_tril_sci, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
 #ax.set_xlim(-3,14)
 ax.set_xlim(-3,12)
-#ax.set_ylim(-0.5, 0.7)
-ax.set_ylim(-0.7, 2)
+ax.set_ylim(-0.5, 0.7)
 ax.set_xlabel('Facebook Connectivity Index')
 ax.set_ylabel('Partial correlation (Network-SS)')
 
@@ -591,9 +607,8 @@ for A_ix, (A_k, vals) in enumerate(A_geo_ints_10.items()):
 ax.scatter(A_tril_geo, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
 #ax.set_xlim(-3,14)
 ax.set_xlim(-3,12)
-#ax.set_ylim(-0.5, 0.7)
-ax.set_ylim(-0.7, 0.2)
-ax.set_xlabel('Geographical Distance Network')
+ax.set_ylim(-0.5, 0.7)
+ax.set_xlabel('Geographical Closeness Network')
 ax.set_ylabel('Partial correlation (Network-SS)')
 
 plt.yticks(rotation = 90)
@@ -624,8 +639,7 @@ for A_ix, (A_k, vals) in enumerate(A_flights_ints_10.items()):
 ax.scatter(A_tril_flights, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
 #ax.set_xlim(-3,14)
 ax.set_xlim(-3,12)
-#ax.set_ylim(-0.5, 0.7)
-ax.set_ylim(-0.3, 0.7)
+ax.set_ylim(-0.5, 0.7)
 ax.set_xlabel('Flights Connectivity Network')
 ax.set_ylabel('Partial correlation (Network-SS)')
 

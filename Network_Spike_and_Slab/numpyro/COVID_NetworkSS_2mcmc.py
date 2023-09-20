@@ -1,10 +1,10 @@
 #%%
 # """Main script for training the model."""
-# import debugpy
-# debugpy.listen(5678)
-# print('Waiting for debugger')
-# debugpy.wait_for_client()
-# print('Debugger attached')
+import debugpy
+debugpy.listen(5678)
+print('Waiting for debugger')
+debugpy.wait_for_client()
+print('Debugger attached')
 #%%
 # imports
 import sys
@@ -48,9 +48,7 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'NetworkSS_results/'
-if not os.path.exists(data_save_path):
-    os.makedirs(data_save_path, mode=0o777)
+
 #%%
 # load models and functions
 import models
@@ -62,7 +60,7 @@ flags.DEFINE_boolean('search_MAP_best_params', False, 'If true, it will optimise
 flags.DEFINE_integer('thinning', None, 'Thinning between MCMC samples.')
 flags.DEFINE_integer('SEED', None, 'Random seed.')
 flags.DEFINE_string('data_save_path', None, 'Path for saving results.')
-flags.DEFINE_integer('n_samples', 1000, 'Number of total samples to run (excluding warmup).')
+flags.DEFINE_integer('n_samples', 2000, 'Number of total samples to run (excluding warmup).')
 flags.DEFINE_string('model', 'models.NetworkSS_repr_etaRepr_loglikRepr', 'Name of model to be run.')
 flags.DEFINE_string('Y', 'COVID_332_meta_pruned.csv', 'Name of file where data for dependent variable is stored.')
 flags.DEFINE_multi_string('network_list', ['GEO_meta_clean_332.npy', 'SCI_meta_clean_332.npy', 'flights_meta_clean_332.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
@@ -107,6 +105,7 @@ n_nets = len(A_list)
 print(f"NetworkSS, n {n}, p {p}, number of networks {n_nets}")
 #%%
 # get init file
+
 CPs=[]
 for f in os.listdir(data_save_path):
     # if 'aggregate.sav' in f: 
@@ -114,14 +113,22 @@ for f in os.listdir(data_save_path):
         if re.search(r'(_CP)\d+', f):
             CP = int(re.search(r'(_CP)\d+', f)[0][3:])
             CPs.append(CP)
-CP_max = max(CPs)
+try:
+    CP_max = max(CPs)
+except:
+    pass
 
 for f in os.listdir(data_save_path):
-    if '1mcmc' in f: 
-        if re.search(fr'.*_CP{CP_max}\.sav$', f):
-            print(f'Init 2mcmc from {f}')
-            with open(data_save_path + f, 'rb') as fr:
+    if 'Merge' in f:
+        print(f'Init 2mcmc from {f}')
+        with open(data_save_path + f, 'rb') as fr:
                 res = jax.device_put(pickle.load(fr), cpus[0])
+    else:
+        if '1mcmc' in f: 
+            if re.search(fr'.*_CP{CP_max}\.sav$', f):
+                print(f'Init 2mcmc from {f}')
+                with open(data_save_path + f, 'rb') as fr:
+                    res = jax.device_put(pickle.load(fr), cpus[0])
 
 ################## MAP ###############
 
@@ -129,7 +136,6 @@ for f in os.listdir(data_save_path):
 # Empircal Bayes marginal MAP estimates
 
 hyperpars = ['eta0_0', 'eta0_coefs', 'eta1_0', 'eta1_coefs', 'eta2_0', 'eta2_coefs']
-
 if search_MAP_best_params:
     print('Search for MAP best params...')
     bandwidths = 10 ** np.linspace(-1, 1, 50)
@@ -248,11 +254,19 @@ for par in hyperpars:
 
 def SVI_init_strategy_golazo_ss(A_list, mcmc_res, fixed_params_dict):
 
-    all_chains = jnp.hstack([mcmc_res['eta0_0'][:,None], 
+    try:
+        all_chains = jnp.hstack([mcmc_res['eta0_0'][:,None], 
+                                mcmc_res['eta0_coefs'],
+                                mcmc_res['eta1_0'][:,None], 
+                                mcmc_res['eta1_coefs'],
+                                mcmc_res['eta2_0'][:,None], 
+                                mcmc_res['eta2_coefs']])
+    except:
+        all_chains = jnp.hstack([mcmc_res['eta0_0'], 
                              mcmc_res['eta0_coefs'],
-                             mcmc_res['eta1_0'][:,None], 
+                             mcmc_res['eta1_0'], 
                              mcmc_res['eta1_coefs'],
-                             mcmc_res['eta2_0'][:,None], 
+                             mcmc_res['eta2_0'], 
                              mcmc_res['eta2_coefs']])
 
     eta0_0_MAP = fixed_params_dict["eta0_0"]
@@ -308,7 +322,7 @@ def SVI_init_strategy_golazo_ss(A_list, mcmc_res, fixed_params_dict):
 
 #%%
 ## params
-n_warmup = 3
+n_warmup = 1000
 n_samples = n_samples_2mcmc
 n_batches = 1
 batch = int(n_samples/n_batches)
@@ -331,7 +345,7 @@ scale_spike_fixed =0.0033341
 #         "eta2_0_m":-9.368, "eta2_0_s":4.184, 
 #         "eta2_coefs_m":0., "eta2_coefs_s":4.184,
 #         "mu_m":0., "mu_s":1.} 
-mcmc_args = {"A_list":A_list, 
+my_model_args = {"A_list":A_list, 
                 "eta0_0_m":0., "eta0_0_s":0.0015864, 
         "eta0_coefs_m":0., "eta0_coefs_s":0.0015864,
         "eta1_0_m":-2.1972246, "eta1_0_s":0.3, 
@@ -364,14 +378,7 @@ blocked_params_list = ["mu", "scale_spike",
                        "eta2_0", "eta2_coefs"]
 
 
-my_model_args = {"A_list":A_list, 
-                "eta0_0_m":0., "eta0_0_s":0.145, 
-        "eta0_coefs_m":0., "eta0_coefs_s":0.145,
-        "eta1_0_m":-2.197, "eta1_0_s":0.661, 
-        "eta1_coefs_m":0., "eta1_coefs_s":0.661,
-        "eta2_0_m":-9.368, "eta2_0_s":4.184, 
-        "eta2_coefs_m":0., "eta2_coefs_s":4.184,
-        "mu_m":0., "mu_s":1.} 
+
 
 if ((my_model == models.NetworkSS_repr_etaRepr_loglikRepr)|(my_model == models.NetworkSS_repr_loglikRepr)):
     y_bar = covid_vals.mean(axis=0) #p

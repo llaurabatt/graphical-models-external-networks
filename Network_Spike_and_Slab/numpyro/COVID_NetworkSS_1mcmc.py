@@ -118,7 +118,7 @@ except:
     CP_init = 0
 
 mcmc1_init(my_model=my_model, thinning=thinning, covid_vals=covid_vals,
-        my_model_args=mcmc_args,
+        my_model_args=mcmc_args, n_samples=n_samples,
         root_dir=_ROOT_DIR, data_save_path=data_save_path, seed=SEED, init_strategy=init_strategy)
 
 

@@ -52,6 +52,7 @@ def mcmc1_init(covid_vals,
                root_dir,
                data_save_path,
                seed,
+               n_samples,
                init_strategy:Optional[str]='init_to_value',
                thinning:Optional[int]=0,
         ):
@@ -73,7 +74,7 @@ def mcmc1_init(covid_vals,
     #%%
     ## params
     n_warmup = 1000
-    n_samples = 11000
+    n_samples = n_samples
     n_batches = 1
     batch = int(n_samples/n_batches)
 

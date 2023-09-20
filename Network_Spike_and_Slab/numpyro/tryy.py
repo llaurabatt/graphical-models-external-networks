@@ -21,6 +21,7 @@ import numpyro
 numpyro.set_platform('cpu')
 print(jax.lib.xla_bridge.get_backend().platform)
 import jax.numpy as jnp
+import pickle
 
 #%%
 # paths
@@ -30,6 +31,7 @@ sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_an
 
 data_path = './Data/COVID/Pre-processed Data/'
 data_save_path = _ROOT_DIR + 'NetworkSS_results_etarepr_loglikrepr_newprior/'
+data_save_path2 = _ROOT_DIR + 'NetworkSS_results_etarepr_loglikrepr_newprior_seed6/'
 
 #%%
 # with open(data_save_path + 'NetworkSS_1mcmc_p332_s1000_aggregate.sav', 'rb') as fr:
@@ -37,8 +39,22 @@ data_save_path = _ROOT_DIR + 'NetworkSS_results_etarepr_loglikrepr_newprior/'
 with open(data_save_path + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000.sav', 'rb') as fr:
 # with open(data_save_path + 'NetworkSS_2mcmc_p332_w3_s20.sav', 'rb') as fr:
     res_ss_geo_sci = pickle.load(fr)
+    
+with open(data_save_path2 + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000.sav', 'rb') as fr:
+    res_ss_geo_sci2 = pickle.load(fr)
 
-all_res = {"NetworkSS_geo_sci":res_ss_geo_sci}
+uni_cols = ['eta0_0', 'eta1_0', 'eta2_0', 'tilde_eta0_0', 'tilde_eta1_0', 'tilde_eta2_0', 'potential_energy']
+res_ss_geo_sci = {k:v[:,None] if k in uni_cols else v for k,v in res_ss_geo_sci.items() }
+res_ss_geo_sci2 = {k:v[:,None] if k in uni_cols else v for k,v in res_ss_geo_sci2.items() }
+
+#%%
+res_merge = {} 
+for k in res_ss_geo_sci2.keys():
+    res_merge[k] = jnp.vstack([res_ss_geo_sci[k], res_ss_geo_sci2[k]])
+
+
+#%%
+all_res = {"NetworkSS_geo_sci":res_merge}
 net_no = 3
 #%%
 # NetworkSS_geo_sci 
@@ -105,10 +121,17 @@ y_bar = covid_vals.mean(axis=0) #p
 S_bar = covid_vals.T@covid_vals/n - jnp.outer(y_bar, y_bar) #(p,p)
 precision_matrix = jnp.identity(p)*0.75 + jnp.ones((p,p))*0.25
 # %%
-def loglik(mu, precision_matrix, y_bar, S_bar, n, p): 
-    slogdet = jnp.linalg.slogdet(precision_matrix)
-    return n*(-0.5*p*jnp.log(2*jnp.pi) + 0.5*slogdet[0]*slogdet[1] - 0.5*((y_bar - mu).T)@precision_matrix@(y_bar - mu) - 0.5*jnp.trace(S_bar@precision_matrix))
+# def loglik(mu, precision_matrix, y_bar, S_bar, n, p): 
+#     slogdet = jnp.linalg.slogdet(precision_matrix)
+#     return n*(-0.5*p*jnp.log(2*jnp.pi) + 0.5*slogdet[0]*slogdet[1] - 0.5*((y_bar - mu).T)@precision_matrix@(y_bar - mu) - 0.5*jnp.trace(S_bar@precision_matrix))
+# # %%
+# loglik(mu=mu, precision_matrix=precision_matrix, 
+#        y_bar=y_bar, S_bar=S_bar, n=n, p=p)
 # %%
-loglik(mu=mu, precision_matrix=precision_matrix, 
-       y_bar=y_bar, S_bar=S_bar, n=n, p=p)
+filename =  _ROOT_DIR + 'MERGE3_6_NetworkSS_results_etarepr_loglikrepr_newprior/'
+if not os.path.exists(filename):
+    os.makedirs(filename, mode=0o777)
+
+with open(filename + f"Merge_NetworkSS_1mcmc_p332_w1000_s{res_merge['eta0_0'].shape[0]}.sav" , 'wb') as f:
+    pickle.dump((res_merge), f)
 # %%

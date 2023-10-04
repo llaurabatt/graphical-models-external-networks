@@ -66,8 +66,7 @@ def get_init_file(dir):
 
 #%%
 def mcmc1_add(
-        covid_vals,
-        A_list,
+        my_vals,
         my_model,
         checkpoint, 
         n_warmup, 
@@ -87,7 +86,7 @@ def mcmc1_add(
     import models
     import my_utils
     #%%
-    n,p = covid_vals.shape
+    n,p = my_vals.shape
     print(f"NetworkSS, n {n} and p {p}")
 
     #%%
@@ -136,11 +135,11 @@ def mcmc1_add(
 
 
     if ((my_model == models.NetworkSS_repr_etaRepr_loglikRepr)|(my_model == models.NetworkSS_repr_loglikRepr)):
-        y_bar = covid_vals.mean(axis=0) #p
-        S_bar = covid_vals.T@covid_vals/n - jnp.outer(y_bar, y_bar) #(p,p)
+        y_bar = my_vals.mean(axis=0) #p
+        S_bar = my_vals.T@my_vals/n - jnp.outer(y_bar, y_bar) #(p,p)
         my_model_args.update({"y_bar":y_bar, "S_bar":S_bar, "n":n, "p":p,})
     elif ((my_model == models.NetworkSS_repr_etaRepr)|(my_model == models.NetworkSS_repr)):
-        my_model_args.update({"Y":covid_vals, "n":n, "p":p,})
+        my_model_args.update({"Y":my_vals, "n":n, "p":p,})
 
     #%%
     # run model
@@ -157,7 +156,7 @@ def mcmc1_add(
     # for b in range(n_batches-1):
     #     sample_batch = mcmc.get_samples()
     #     mcmc.post_warmup_state = mcmc.last_state
-    #     mcmc.run(mcmc.post_warmup_state.rng_key, Y=covid_vals, **my_model_args,
+    #     mcmc.run(mcmc.post_warmup_state.rng_key, Y=my_vals, **my_model_args,
     #         extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state'))  # or mcmc.run(random.PRNGKey(1))
 
 

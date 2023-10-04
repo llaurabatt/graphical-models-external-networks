@@ -46,7 +46,7 @@ print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
 cpus = jax.devices("cpu")
 
 #%%
-def mcmc1_init(covid_vals,
+def mcmc1_init(my_vals,
                my_model,
                my_model_args,
                root_dir,
@@ -66,7 +66,7 @@ def mcmc1_init(covid_vals,
     import models
     import my_utils
     #%%
-    n,p = covid_vals.shape
+    n,p = my_vals.shape
     n_nets = len(my_model_args['A_list'])
     print(f"NetworkSS, n {n}, p {p}, number of networks {n_nets}")
     #%%
@@ -118,11 +118,11 @@ def mcmc1_init(covid_vals,
 
 
     if ((my_model == models.NetworkSS_repr_etaRepr_loglikRepr)|(my_model == models.NetworkSS_repr_loglikRepr)):
-        y_bar = covid_vals.mean(axis=0) #p
-        S_bar = covid_vals.T@covid_vals/n - jnp.outer(y_bar, y_bar) #(p,p)
+        y_bar = my_vals.mean(axis=0) #p
+        S_bar = my_vals.T@my_vals/n - jnp.outer(y_bar, y_bar) #(p,p)
         my_model_args.update({"y_bar":y_bar, "S_bar":S_bar, "n":n, "p":p,})
     elif ((my_model == models.NetworkSS_repr_etaRepr)|(my_model == models.NetworkSS_repr)):
-        my_model_args.update({"Y":covid_vals, "n":n, "p":p,})
+        my_model_args.update({"Y":my_vals, "n":n, "p":p,})
 
 
     #%%

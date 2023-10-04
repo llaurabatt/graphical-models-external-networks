@@ -25,9 +25,9 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'NetworkSS_results/'
-if not os.path.exists(data_save_path):
-    os.makedirs(data_save_path, mode=0o777)
+# data_save_path = _ROOT_DIR + 'NetworkSS_results/'
+# if not os.path.exists(data_save_path):
+#     os.makedirs(data_save_path, mode=0o777)
 
 # load models and functions
 import models

@@ -28,8 +28,8 @@ _ROOT_DIR = "/home/paperspace/"
 os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
-data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'MERGE3_6_NetworkSS_results_etarepr_loglikrepr_newprior/'
+data_path = './Data/Stock/Pre-processed Data/'
+data_save_path = _ROOT_DIR + 'stock_NetworkSS_etarepr_loglikrepr_newprior_SEED6/'
 if not os.path.exists(data_save_path + 'Figures/'):
     os.makedirs(data_save_path + 'Figures/', mode=0o777)
 # load models and functions
@@ -42,30 +42,30 @@ flags.DEFINE_string('mcmc1_path', None, '1mcmc path to generate plots from.')
 flags.DEFINE_string('mcmc2_path', None, '2mcmc path to generate plots from.')
 flags.DEFINE_boolean('get_probs', True, 'Compute mean slab, w slab, prob slab for 1mcmc.')
 flags.DEFINE_string('data_save_path', data_save_path, 'Path where to save figure folder.')
-flags.DEFINE_string('Y', 'COVID_332_meta_pruned.csv', 'Name of file where data for dependent variable is stored.')
-flags.DEFINE_multi_string('network_list', ['GEO_meta_clean_332.npy', 'SCI_meta_clean_332.npy', 'flights_meta_clean_332.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
+flags.DEFINE_string('Y', 'stock_trans_SP.csv', 'Name of file where data for dependent variable is stored.')
+flags.DEFINE_multi_string('network_list', ['E_pears_clean_SP_366.npy', 'P_pears_clean_SP_366.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
 flags.mark_flags_as_required(['mcmc1_path', 'mcmc2_path'])
 FLAGS(sys.argv)
 
 # load data
-covid_vals_name = FLAGS.Y
+stock_vals_name = FLAGS.Y
 network_names = FLAGS.network_list
 print(network_names)
 
-covid_vals = jnp.array(pd.read_csv(data_path + covid_vals_name, index_col='Unnamed: 0').values)
-geo_clean = jnp.array(jnp.load(data_path + network_names[0]))
-sci_clean = jnp.array(jnp.load(data_path + network_names[1]))
-flights_clean = jnp.array(jnp.load(data_path + network_names[2]))
+stock_vals = jnp.array(pd.read_csv(data_path + stock_vals_name, index_col='Unnamed: 0').values)
+E_clean = jnp.array(jnp.load(data_path + network_names[0]))
+P_clean = jnp.array(jnp.load(data_path + network_names[1]))
 
-# covid_vals = covid_vals[:,:100].copy()
-# geo_clean = geo_clean[:100, :100].copy()
-# sci_clean = sci_clean[:100, :100].copy()
+# stock_vals = stock_vals[:,:100].copy()
+# E_clean = E_clean[:100, :100].copy()
+# P_clean = P_clean[:100, :100].copy()
 
+A_list = [E_clean, P_clean]
 net_no = len(network_names)
 scale_spike_fixed =0.003
 
-n,p = covid_vals.shape
-A_list = [geo_clean, sci_clean, flights_clean]
+n,p = stock_vals.shape
+
 tril_idx = jnp.tril_indices(n=p, k=-1, m=p)
 tril_len = tril_idx[0].shape[0]
 A_tril_arr = jnp.array([A[tril_idx] for A in A_list]) # (a, p, p)
@@ -73,25 +73,23 @@ A_tril_arr = jnp.array([A[tril_idx] for A in A_list]) # (a, p, p)
 # Compile results
 
 # 1MCMC
-output_dict_ss_geo_sci = {"eta0_0":[],"eta0_coefs":[], "eta1_0":[],"eta1_coefs":[], "eta2_0":[],"eta2_coefs":[],
+output_dict_ss_E_P = {"eta0_0":[],"eta0_coefs":[], "eta1_0":[],"eta1_coefs":[], "eta2_0":[],"eta2_coefs":[],
                     "w_slab":[], "mean_slab":[], "scale_slab":[],"Pos":[], "Neg":[], "Pos_95":[], "Neg_95":[],}
 
 
-outputs = {"NetworkSS_geo_sci":output_dict_ss_geo_sci }
+outputs = {"NetworkSS_E_P":output_dict_ss_E_P }
         
-# with open(data_save_path + f'NetworkSS_geo_sci_1mcmc.sav', 'rb') as fr:
-#     res_ss_geo_sci = pickle.load(fr)
+# with open(data_save_path + f'NetworkSS_E_P_1mcmc.sav', 'rb') as fr:
+#     res_ss_E_P = pickle.load(fr)
 #%%
-# with open(data_save_path + f'NetworkSS_1mcmc_p629_s1500.sav', 'rb') as fr:
-# with open(data_save_path + FLAGS.mcmc1_file, 'rb') as fr:
 with open(FLAGS.mcmc1_path, 'rb') as fr:
-    res_ss_geo_sci = pickle.load(fr)
+    res_ss_E_P = pickle.load(fr)
 
-# rhos = pd.DataFrame(res_ss_geo_sci['rho_lt'])
+# rhos = pd.DataFrame(res_ss_E_P['rho_lt'])
 # rhos.to_csv(data_save_path + 'rho_lt_mcmc1.csv')
 # del rhos
 
-all_res = {"NetworkSS_geo_sci":res_ss_geo_sci}
+all_res = {"NetworkSS_E_P":res_ss_E_P}
 #%%
 if FLAGS.get_probs:
     for i, res in all_res.items():
@@ -116,7 +114,7 @@ if FLAGS.get_probs:
             mean_slab_s = eta0_0_s + A_tril_mean0_s
             mean_slab_chain.append(mean_slab_s)
         mean_slab_chain = jnp.array(mean_slab_chain)
-        all_res['NetworkSS_geo_sci'].update({"mean_slab":mean_slab_chain})
+        all_res['NetworkSS_E_P'].update({"mean_slab":mean_slab_chain})
         mean_slab = mean_slab_chain.mean(0)
         outputs[i]["mean_slab"].append(mean_slab)
 
@@ -130,7 +128,7 @@ if FLAGS.get_probs:
             scale_slab_s = scale_spike_fixed*(1+jnp.exp(-eta1_0_s-A_tril_mean1_s))
             scale_slab_chain.append(scale_slab_s)
         scale_slab_chain = jnp.array(scale_slab_chain)
-        all_res['NetworkSS_geo_sci'].update({"scale_slab":scale_slab_chain})
+        all_res['NetworkSS_E_P'].update({"scale_slab":scale_slab_chain})
         scale_slab = scale_slab_chain.mean(0)
         outputs[i]["scale_slab"].append(scale_slab)
 
@@ -144,7 +142,7 @@ if FLAGS.get_probs:
             w_slab_s = 1/(1+jnp.exp(-eta2_0_s -A_tril_mean2_s)) 
             w_slab_chain.append(w_slab_s)
         w_slab_chain = jnp.array(w_slab_chain)
-        all_res['NetworkSS_geo_sci'].update({"w_slab":w_slab_chain})
+        all_res['NetworkSS_E_P'].update({"w_slab":w_slab_chain})
         w_slab = w_slab_chain.mean(0)
         outputs[i]["w_slab"].append(w_slab)
 
@@ -185,23 +183,23 @@ else:
 
 # 2MCMC
 
-output_dict_ss_geo_sci = {"eta0_0":[],"eta0_coefs":[], "eta1_0":[],"eta1_coefs":[], "eta2_0":[],"eta2_coefs":[],
+output_dict_ss_E_P = {"eta0_0":[],"eta0_coefs":[], "eta1_0":[],"eta1_coefs":[], "eta2_0":[],"eta2_coefs":[],
                     "w_slab":[], "mean_slab":[], "scale_slab":[],"Pos":[], "Neg":[], "Pos_95":[], "Neg_95":[],}
 
 
-outputs = {"NetworkSS_geo_sci":output_dict_ss_geo_sci}
+outputs = {"NetworkSS_E_P":output_dict_ss_E_P}
 
 # with open(data_save_path + f'NetworkSS_2mcmc_p629_s1500.sav', 'rb') as fr:
 # with open(data_save_path + FLAGS.mcmc2_file, 'rb') as fr:
 with open(FLAGS.mcmc2_path, 'rb') as fr:
-    mcmc2_ss_geo_sci = pickle.load(fr)
+    mcmc2_ss_E_P = pickle.load(fr)
 
-# rhos = pd.DataFrame(mcmc2_ss_geo_sci['rho_lt'])
+# rhos = pd.DataFrame(mcmc2_ss_E_P['rho_lt'])
 # rhos.to_csv(data_save_path + 'rho_lt_mcmc2.csv')
 # del rhos
 
 
-all_res_2MCMC = {"NetworkSS_geo_sci":mcmc2_ss_geo_sci}
+all_res_2MCMC = {"NetworkSS_E_P":mcmc2_ss_E_P}
 for i, res in all_res_2MCMC.items():
 
     n_samples = res["rho_lt"].shape[0]
@@ -252,7 +250,7 @@ outputs_2MCMC = outputs
 
 cols = ['Pos', 'Neg', 'Pos_95', 'Neg_95']
 
-res_dict_1MCMC = {"NetworkSS_geo_sci":[]}
+res_dict_1MCMC = {"NetworkSS_E_P":[]}
 for k, output in outputs_1MCMC.items():
     for col in cols:
         try:
@@ -262,7 +260,7 @@ for k, output in outputs_1MCMC.items():
 
 cols = ['Pos', 'Neg', 'Pos_95', 'Neg_95']
 
-res_dict_2MCMC = {"NetworkSS_geo_sci":[]}
+res_dict_2MCMC = {"NetworkSS_E_P":[]}
 for k, output in outputs_2MCMC.items():
     for col in cols:
         try:
@@ -272,35 +270,35 @@ for k, output in outputs_2MCMC.items():
 
 print('Results for 1MCMC')
 df = pd.DataFrame.from_dict(res_dict_1MCMC, orient='index', 
-                       columns=cols).loc[['NetworkSS_geo_sci']]
+                       columns=cols).loc[['NetworkSS_E_P']]
 display(df)
 
 print('Results for 2MCMC')
 df = pd.DataFrame.from_dict(res_dict_2MCMC, orient='index', 
-                       columns=cols).loc[['NetworkSS_geo_sci']]
+                       columns=cols).loc[['NetworkSS_E_P']]
 
-df.index = ['GOLAZO_SS_geo_sci_2mcmc']
+df.index = ['GOLAZO_SS_E_P_2mcmc']
 display(df)
 
-# NetworkSS_geo_sci 
+# NetworkSS_E_P 
 cols = ["eta0_0", "eta1_0","eta2_0"]
 cols_2 = [ "eta0_coefs", "eta1_coefs", "eta2_coefs"]
-names = ['geo', 'sci', 'flights']
+names = ['E', 'P']
 etas_NetworkSS = {}
     
 for k in cols:
-    etas_NetworkSS[k] = {'MAP': all_res_2MCMC['NetworkSS_geo_sci']['fixed_params_dict'][k],
-               'mean': all_res['NetworkSS_geo_sci'][k].mean(0)[0],
-              'ESS': numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_geo_sci'][k],0))['Param:0']['n_eff'],
-               'r_hat': numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_geo_sci'][k],0))['Param:0']['r_hat'],
+    etas_NetworkSS[k] = {'MAP': all_res_2MCMC['NetworkSS_E_P']['fixed_params_dict'][k],
+               'mean': float(all_res['NetworkSS_E_P'][k].mean(0)),
+              'ESS': numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_E_P'][k],0))['Param:0']['n_eff'],
+               'r_hat': numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_E_P'][k],0))['Param:0']['r_hat'],
                 }
 
 for k in cols_2:
     for net_ix in range(net_no):
-        etas_NetworkSS[f'{k}_{names[net_ix]}'] = {'MAP': all_res_2MCMC['NetworkSS_geo_sci']['fixed_params_dict'][k][net_ix],
-                   'mean': all_res['NetworkSS_geo_sci'][k].mean(0)[net_ix],
-                  'ESS': numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_geo_sci'][k][:,net_ix].flatten(),0))['Param:0']['n_eff'],
-                   'r_hat': numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_geo_sci'][k][:,net_ix].flatten(),0))['Param:0']['r_hat'],
+        etas_NetworkSS[f'{k}_{names[net_ix]}'] = {'MAP': all_res_2MCMC['NetworkSS_E_P']['fixed_params_dict'][k][net_ix],
+                   'mean': all_res['NetworkSS_E_P'][k].mean(0)[net_ix],
+                  'ESS': numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_E_P'][k][:,net_ix].flatten(),0))['Param:0']['n_eff'],
+                   'r_hat': numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_E_P'][k][:,net_ix].flatten(),0))['Param:0']['r_hat'],
                     }
         
 df_NetworkSS_etas_spec = pd.DataFrame.from_dict(etas_NetworkSS, orient='index')
@@ -309,15 +307,14 @@ df_NetworkSS_etas_spec = pd.DataFrame.from_dict(etas_NetworkSS, orient='index')
 display(df_NetworkSS_etas_spec)
 
 tril_idx = jnp.tril_indices(n=p, k=-1, m=p)
-A_tril_geo = geo_clean[tril_idx]
-A_tril_sci = sci_clean[tril_idx]
-A_tril_flights = flights_clean[tril_idx]
+A_tril_E = E_clean[tril_idx]
+A_tril_P = P_clean[tril_idx]
 
 # NetworkSS
 
 nbins=10
 
-fixed_params_MAP_dict = all_res_2MCMC['NetworkSS_geo_sci']['fixed_params_dict']
+fixed_params_MAP_dict = all_res_2MCMC['NetworkSS_E_P']['fixed_params_dict']
 
 negative_fixed_params_MAP_dict = {k:(-v if 'eta0' in k else v) 
                               for k,v in fixed_params_MAP_dict.items()
@@ -325,20 +322,16 @@ negative_fixed_params_MAP_dict = {k:(-v if 'eta0' in k else v)
 
 etas_dict = negative_fixed_params_MAP_dict
 
-A_geo_ints_10, A_geo_mids_10  = my_utils.get_density_els_marginal(A_tril=A_tril_geo, 
+A_E_ints_10, A_E_mids_10  = my_utils.get_density_els_marginal(A_tril=A_tril_E, 
                                                                   A_tril_pos=0, 
                                                                 len_A_list=net_no, nbins=nbins, 
                          eta_dict=etas_dict)
 
-A_sci_ints_10, A_sci_mids_10 = my_utils.get_density_els_marginal(A_tril=A_tril_sci, 
+A_P_ints_10, A_P_mids_10 = my_utils.get_density_els_marginal(A_tril=A_tril_P, 
                                                                  A_tril_pos=1, 
                                                                 len_A_list=net_no, nbins=nbins, 
                          eta_dict=etas_dict)
 
-A_flights_ints_10, A_flights_mids_10 = my_utils.get_density_els_marginal(A_tril=A_tril_flights, 
-                                                                 A_tril_pos=2, 
-                                                                len_A_list=net_no, nbins=nbins, 
-                         eta_dict=etas_dict)
 
 ## Final plots
 
@@ -365,31 +358,25 @@ def get_credible_interval(post_chain):
 
 
 df_MAP_dict = {'intercept':{'eta0_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta0_0'],3),
-                        'eta0_CI':get_credible_interval(res_ss_geo_sci['eta0_0'].squeeze()),
+                        'eta0_CI':get_credible_interval(res_ss_E_P['eta0_0'].squeeze()),
                         'eta1_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta1_0'],3),
-                        'eta1_CI':get_credible_interval(res_ss_geo_sci['eta1_0'].squeeze()),
+                        'eta1_CI':get_credible_interval(res_ss_E_P['eta1_0'].squeeze()),
                         'eta2_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta2_0'],3),
-                        'eta2_CI':get_credible_interval(res_ss_geo_sci['eta2_0'].squeeze()),},
+                        'eta2_CI':get_credible_interval(res_ss_E_P['eta2_0'].squeeze()),},
                
-'geo':{'eta0_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta0_coefs_geo'],3),
-                        'eta0_CI':get_credible_interval(res_ss_geo_sci['eta0_coefs'][:,0]),
-                        'eta1_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta1_coefs_geo'],3),
-                        'eta1_CI':get_credible_interval(res_ss_geo_sci['eta1_coefs'][:,0]),
-                        'eta2_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta2_coefs_geo'],3),
-                        'eta2_CI':get_credible_interval(res_ss_geo_sci['eta2_coefs'][:,0]),},
+'E':{'eta0_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta0_coefs_E'],3),
+                        'eta0_CI':get_credible_interval(res_ss_E_P['eta0_coefs'][:,0]),
+                        'eta1_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta1_coefs_E'],3),
+                        'eta1_CI':get_credible_interval(res_ss_E_P['eta1_coefs'][:,0]),
+                        'eta2_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta2_coefs_E'],3),
+                        'eta2_CI':get_credible_interval(res_ss_E_P['eta2_coefs'][:,0]),},
 
-'sci':{'eta0_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta0_coefs_sci'],3),
-                        'eta0_CI':get_credible_interval(res_ss_geo_sci['eta0_coefs'][:,1]),
-                        'eta1_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta1_coefs_sci'],3),
-                        'eta1_CI':get_credible_interval(res_ss_geo_sci['eta1_coefs'][:,1]),
-                        'eta2_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta2_coefs_sci'],3),
-                        'eta2_CI':get_credible_interval(res_ss_geo_sci['eta2_coefs'][:,1]),},
-'flights':{'eta0_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta0_coefs_flights'],3),
-                        'eta0_CI':get_credible_interval(res_ss_geo_sci['eta0_coefs'][:,2]),
-                        'eta1_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta1_coefs_flights'],3),
-                        'eta1_CI':get_credible_interval(res_ss_geo_sci['eta1_coefs'][:,2]),
-                        'eta2_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta2_coefs_flights'],3),
-                        'eta2_CI':get_credible_interval(res_ss_geo_sci['eta2_coefs'][:,2]),},
+'P':{'eta0_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta0_coefs_P'],3),
+                        'eta0_CI':get_credible_interval(res_ss_E_P['eta0_coefs'][:,1]),
+                        'eta1_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta1_coefs_P'],3),
+                        'eta1_CI':get_credible_interval(res_ss_E_P['eta1_coefs'][:,1]),
+                        'eta2_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta2_coefs_P'],3),
+                        'eta2_CI':get_credible_interval(res_ss_E_P['eta2_coefs'][:,1]),},
 }
 
 df = pd.DataFrame.from_dict(df_MAP_dict)
@@ -399,22 +386,26 @@ df = pd.DataFrame.from_dict(df_MAP_dict).to_latex()
 display(df)
 
 def MODIFIED_get_density_els_marginal(A_tril, A_min, A_max, A_tril_pos, len_A_list, nbins, eta_dict):
-    bins = np.histogram(A_tril, bins=nbins)[1]
-    delta = jnp.diff(np.histogram(A_tril, bins=nbins)[1])[0]
-    if min(bins) > A_min:
+    bins = np.histogram(A_tril, bins=nbins)[1] # bin values
+    delta = jnp.diff(np.histogram(A_tril, bins=nbins)[1])[0] # (fixed) difference between bins
+    if min(bins) > A_min: # if min bin of A_tril larger than A_min that I want, extrapolate
         low = bins[0]
         while low>A_min:
             low -= delta
             bins = jnp.concatenate([jnp.array([low]), bins])
-    if max(bins) < A_max:
+    if max(bins) < A_max: # if max bin of A_tril smaller than A_max that I want, extrapolate
         high = bins[-1]
         while high<A_max:
             high += delta
-            bins = jnp.concatenate([bins, jnp.array([high])])
+            bins = jnp.concatenate([bins, jnp.array([high])]) # extrapolated bins
 
     A_ints = {}
     A_mids = []
     down = -jnp.inf
+    
+    # A_mids: Array of midpoints for each bin of the extrapolated bins of A
+    # A_ints: dict of key = ['limit below to limit above of bin'], value = dictionary of params for SS density at A_mid
+
     for i in range(-1, len(bins)-2):
         up = bins[i+2]
         if i==-1:
@@ -457,39 +448,30 @@ plt.rcParams.update(params)
 fig, ax = plt.subplots( figsize=(5,4))
 
 nbins=10
-MODIFIED_A_geo_ints_10, MODIFIED_A_geo_mids_10  = MODIFIED_get_density_els_marginal(A_tril=A_tril_geo, 
+MODIFIED_A_E_ints_10, MODIFIED_A_E_mids_10  = MODIFIED_get_density_els_marginal(A_tril=A_tril_E, 
                                                                   A_min=-2, A_max=6.5, 
                                                                   A_tril_pos=0, 
                                                                 len_A_list=net_no, nbins=nbins,  eta_dict=etas_dict)
 
-MODIFIED_A_sci_ints_10, MODIFIED_A_sci_mids_10 = MODIFIED_get_density_els_marginal(A_tril=A_tril_sci, 
+MODIFIED_A_P_ints_10, MODIFIED_A_P_mids_10 = MODIFIED_get_density_els_marginal(A_tril=A_tril_P, 
                                                                                    A_min=-2, A_max=6.5,
                                                                  A_tril_pos=1, 
                                                                 len_A_list=net_no, nbins=nbins, eta_dict=etas_dict)
 
-MODIFIED_A_flights_ints_10, MODIFIED_A_flights_mids_10 = MODIFIED_get_density_els_marginal(A_tril=A_tril_flights, 
-                                                                                   A_min=-2, A_max=6.5,
-                                                                 A_tril_pos=2, 
-                                                                len_A_list=net_no, nbins=nbins, eta_dict=etas_dict)
 
-
-MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_sci_ints_10, orient='index')
+MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_P_ints_10, orient='index')
 MODIFIED_df = MODIFIED_df.astype('float64')
-MODIFIED_df_sci = MODIFIED_df.round(decimals = 5)
+MODIFIED_df_P = MODIFIED_df.round(decimals = 5)
 
-MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_geo_ints_10, orient='index')
+MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_E_ints_10, orient='index')
 MODIFIED_df = MODIFIED_df.astype('float64')
-MODIFIED_df_geo = MODIFIED_df.round(decimals = 5)
+MODIFIED_df_E = MODIFIED_df.round(decimals = 5)
 
-MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_flights_ints_10, orient='index')
-MODIFIED_df = MODIFIED_df.astype('float64')
-MODIFIED_df_flights = MODIFIED_df.round(decimals = 5)
-
-dfs = [MODIFIED_df_geo, MODIFIED_df_sci, MODIFIED_df_flights]
-df_names = ['geo', 'sci', 'flights']
-ticklabs = [MODIFIED_A_geo_mids_10, MODIFIED_A_sci_mids_10, MODIFIED_A_flights_mids_10 ]
-legendlabs = ['Geographical Closeness Network', 'Facebook Connectivity Index', 'Flights Connectivity Network']
-colors = ['black', 'gray', 'blue']
+dfs = [MODIFIED_df_E, MODIFIED_df_P]
+df_names = ['E', 'P']
+ticklabs = [MODIFIED_A_E_mids_10, MODIFIED_A_P_mids_10]
+legendlabs = ['Economic Distance Network', 'Policy Connectivity Index']
+colors = ['black', 'gray']
 
 
 for df_ix, df in enumerate(dfs):
@@ -501,46 +483,37 @@ for df_ix, df in enumerate(dfs):
 fig.legend()
 plt.yticks(rotation = 90)
 fig.tight_layout()
-fig.savefig(data_save_path + 'Figures/' + 'COVID_SS_prob_slab.pdf')
+fig.savefig(data_save_path + 'Figures/' + 'stock_SS_prob_slab.pdf')
 plt.close()
 ################################################################################################
 
 fig, ax = plt.subplots( figsize=(5,4))
 
 nbins=10
-MODIFIED_A_geo_ints_10, MODIFIED_A_geo_mids_10  = MODIFIED_get_density_els_marginal(A_tril=A_tril_geo, 
+MODIFIED_A_E_ints_10, MODIFIED_A_E_mids_10  = MODIFIED_get_density_els_marginal(A_tril=A_tril_E, 
                                                                   A_min=-2, A_max=6.5, 
                                                                   A_tril_pos=0, 
                                                                 len_A_list=net_no, nbins=nbins,  eta_dict=etas_dict)
 
-MODIFIED_A_sci_ints_10, MODIFIED_A_sci_mids_10 = MODIFIED_get_density_els_marginal(A_tril=A_tril_sci, 
+MODIFIED_A_P_ints_10, MODIFIED_A_P_mids_10 = MODIFIED_get_density_els_marginal(A_tril=A_tril_P, 
                                                                                    A_min=-2, A_max=6.5,
                                                                  A_tril_pos=1, 
                                                                 len_A_list=net_no, nbins=nbins, eta_dict=etas_dict)
 
-MODIFIED_A_flights_ints_10, MODIFIED_A_flights_mids_10 = MODIFIED_get_density_els_marginal(A_tril=A_tril_flights, 
-                                                                                   A_min=-2, A_max=6.5,
-                                                                 A_tril_pos=2, 
-                                                                len_A_list=net_no, nbins=nbins, eta_dict=etas_dict)
 
-
-MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_sci_ints_10, orient='index')
+MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_P_ints_10, orient='index')
 MODIFIED_df = MODIFIED_df.astype('float64')
-MODIFIED_df_sci = MODIFIED_df.round(decimals = 5)
+MODIFIED_df_P = MODIFIED_df.round(decimals = 5)
 
-MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_geo_ints_10, orient='index')
+MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_E_ints_10, orient='index')
 MODIFIED_df = MODIFIED_df.astype('float64')
-MODIFIED_df_geo = MODIFIED_df.round(decimals = 5)
+MODIFIED_df_E = MODIFIED_df.round(decimals = 5)
 
-MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_flights_ints_10, orient='index')
-MODIFIED_df = MODIFIED_df.astype('float64')
-MODIFIED_df_flights = MODIFIED_df.round(decimals = 5)
-
-dfs = [MODIFIED_df_geo, MODIFIED_df_sci, MODIFIED_df_flights]
-df_names = ['geo', 'sci', 'flights']
-ticklabs = [MODIFIED_A_geo_mids_10, MODIFIED_A_sci_mids_10, MODIFIED_A_flights_mids_10 ]
-legendlabs = ['Geographical Closeness Network', 'Facebook Connectivity Index', 'Flights Connectivity Network']
-colors = ['black', 'gray', 'blue']
+dfs = [MODIFIED_df_E, MODIFIED_df_P]
+df_names = ['E', 'P']
+ticklabs = [MODIFIED_A_E_mids_10, MODIFIED_A_P_mids_10]
+legendlabs = ['Economic Distance Network', 'Policy Connectivity Index']
+colors = ['black', 'gray']
 
 for df_ix, df in enumerate(dfs):
     ax.plot(ticklabs[df_ix], df['mean_slab'].values, linewidth=1.2, label=legendlabs[df_ix], color=colors[df_ix])
@@ -551,99 +524,67 @@ for df_ix, df in enumerate(dfs):
 fig.legend()
 plt.yticks(rotation = 90)
 fig.tight_layout()
-fig.savefig(data_save_path + 'Figures/' + 'COVID_SS_mean_slab.pdf')
+fig.savefig(data_save_path + 'Figures/' + 'stock_SS_mean_slab.pdf')
 plt.close()
 ################################################################################################
 
 fig, ax = plt.subplots(figsize=(5,4))
 
 # with open(data_save_path + f'NetworkSS_2mcmc_p629_s1500.sav', 'rb') as fr:
-#     mcmc2_ss_geo_sci = pickle.load(fr)
+#     mcmc2_ss_E_P = pickle.load(fr)
     
 x_axis = jnp.arange(-1,1,0.001)
-rho_tril = mcmc2_ss_geo_sci['rho_lt'].mean(0)
+rho_tril = mcmc2_ss_E_P['rho_lt'].mean(0)
 
-densities_geo_sci_sci = []
-for A_ix, (A_k, vals) in enumerate(A_sci_ints_10.items()):
+densities_E_P_P = []
+for A_ix, (A_k, vals) in enumerate(A_P_ints_10.items()):
     density = jnp.exp(jnp.array([models.logprior_NetworkSS(scale_spike=vals['scale_spike'],
                                                            scale_slab=vals['scale_slab'],
                                                            w_slab=vals['w_slab'],
                                                            mean_slab=vals['mean_slab'],
                                                            rho_lt=x) for x in x_axis]))
-    densities_geo_sci_sci.append(density)
-    ax.plot(density+A_sci_mids_10[A_ix], x_axis, alpha=0.3, c='gray')
+    densities_E_P_P.append(density)
+    ax.plot(density+A_P_mids_10[A_ix], x_axis, alpha=0.3, c='gray')
     
-ax.scatter(A_tril_sci, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
+ax.scatter(A_tril_P, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
 #ax.set_xlim(-3,14)
-ax.set_xlim(-3,12)
+ax.set_xlim(-5,5)
 ax.set_ylim(-0.5, 0.7)
-ax.set_xlabel('Facebook Connectivity Index')
+ax.set_xlabel('Policy Connectivity Index')
 ax.set_ylabel('Partial correlation (Network-SS)')
 
 plt.yticks(rotation = 90) 
 fig.tight_layout()
-fig.savefig(data_save_path + 'Figures/' + 'COVID_SS_partial_corrs_SCI.pdf')
+fig.savefig(data_save_path + 'Figures/' + 'stock_SS_partial_corrs_P.pdf')
 plt.close()
 ################################################################################################
 
 fig, ax = plt.subplots(figsize=(5,4))
 
-# with open(data_save_path +f'NetworkSS_geo_sci_2mcmc.sav', 'rb') as fr:
-#     mcmc2_ss_geo_sci = pickle.load(fr)
+# with open(data_save_path +f'NetworkSS_E_P_2mcmc.sav', 'rb') as fr:
+#     mcmc2_ss_E_P = pickle.load(fr)
     
 x_axis = jnp.arange(-1,1,0.001)
-rho_tril = mcmc2_ss_geo_sci['rho_lt'].mean(0)
+rho_tril = mcmc2_ss_E_P['rho_lt'].mean(0)
 
-densities_geo_sci_geo = []
-for A_ix, (A_k, vals) in enumerate(A_geo_ints_10.items()):
+densities_E_P_E = []
+for A_ix, (A_k, vals) in enumerate(A_E_ints_10.items()):
     density = jnp.exp(jnp.array([models.logprior_NetworkSS(scale_spike=vals['scale_spike'],
                                                            scale_slab=vals['scale_slab'],
                                                            w_slab=vals['w_slab'],
                                                            mean_slab=vals['mean_slab'],
                                                            rho_lt=x) for x in x_axis]))
-    densities_geo_sci_geo.append(density)
-    ax.plot(density+A_geo_mids_10[A_ix], x_axis, alpha=0.3, c='gray')
+    densities_E_P_E.append(density)
+    ax.plot(density+A_E_mids_10[A_ix], x_axis, alpha=0.3, c='gray')
     
-ax.scatter(A_tril_geo, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
+ax.scatter(A_tril_E, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
 #ax.set_xlim(-3,14)
-ax.set_xlim(-3,12)
+ax.set_xlim(-3,5)
 ax.set_ylim(-0.5, 0.7)
-ax.set_xlabel('Geographical Closeness Network')
+ax.set_xlabel('Economic Distance Network')
 ax.set_ylabel('Partial correlation (Network-SS)')
 
 plt.yticks(rotation = 90)
 fig.tight_layout()
-fig.savefig(data_save_path + 'Figures/' + 'COVID_SS_partial_corrs_GEO.pdf')
-plt.close()
-
-################################################################################################
-
-fig, ax = plt.subplots(figsize=(5,4))
-
-# with open(data_save_path +f'NetworkSS_geo_sci_2mcmc.sav', 'rb') as fr:
-#     mcmc2_ss_geo_sci = pickle.load(fr)
-    
-x_axis = jnp.arange(-1,1,0.001)
-rho_tril = mcmc2_ss_geo_sci['rho_lt'].mean(0)
-
-densities_geo_sci_flights = []
-for A_ix, (A_k, vals) in enumerate(A_flights_ints_10.items()):
-    density = jnp.exp(jnp.array([models.logprior_NetworkSS(scale_spike=vals['scale_spike'],
-                                                           scale_slab=vals['scale_slab'],
-                                                           w_slab=vals['w_slab'],
-                                                           mean_slab=vals['mean_slab'],
-                                                           rho_lt=x) for x in x_axis]))
-    densities_geo_sci_flights.append(density)
-    ax.plot(density+A_flights_mids_10[A_ix], x_axis, alpha=0.3, c='gray')
-    
-ax.scatter(A_tril_flights, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
-#ax.set_xlim(-3,14)
-ax.set_xlim(-3,12)
-ax.set_ylim(-0.5, 0.7)
-ax.set_xlabel('Flights Connectivity Network')
-ax.set_ylabel('Partial correlation (Network-SS)')
-
-plt.yticks(rotation = 90)
-fig.tight_layout()
-fig.savefig(data_save_path + 'Figures/' + 'COVID_SS_partial_corrs_FLIGHTS.pdf')
+fig.savefig(data_save_path + 'Figures/' + 'stock_SS_partial_corrs_E.pdf')
 plt.close()

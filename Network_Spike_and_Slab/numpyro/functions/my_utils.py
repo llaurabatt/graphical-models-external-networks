@@ -428,6 +428,9 @@ def from_etas_to_params(coef_dict, p, model='glasso_ss', A_list=None):
 def get_density_els_marginal(A_tril, A_tril_pos, len_A_list, nbins, eta_dict):
     bins = np.histogram(A_tril, bins=nbins)[1]
 
+    # A_mids: Array of midpoints for each bin of the extrapolated bins of A
+    # A_ints: dict of key = ['limit below to limit above of bin'], value = dictionary of params for SS density at A_mid
+    
     A_ints = {}
     A_mids = []
     down = -jnp.inf

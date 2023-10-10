@@ -385,51 +385,6 @@ display(df)
 df = pd.DataFrame.from_dict(df_MAP_dict).to_latex()
 display(df)
 
-def MODIFIED_get_density_els_marginal(A_tril, A_min, A_max, A_tril_pos, len_A_list, nbins, eta_dict):
-    bins = np.histogram(A_tril, bins=nbins)[1] # bin values
-    delta = jnp.diff(np.histogram(A_tril, bins=nbins)[1])[0] # (fixed) difference between bins
-    if min(bins) > A_min: # if min bin of A_tril larger than A_min that I want, extrapolate
-        low = bins[0]
-        while low>A_min:
-            low -= delta
-            bins = jnp.concatenate([jnp.array([low]), bins])
-    if max(bins) < A_max: # if max bin of A_tril smaller than A_max that I want, extrapolate
-        high = bins[-1]
-        while high<A_max:
-            high += delta
-            bins = jnp.concatenate([bins, jnp.array([high])]) # extrapolated bins
-
-    A_ints = {}
-    A_mids = []
-    down = -jnp.inf
-    
-    # A_mids: Array of midpoints for each bin of the extrapolated bins of A
-    # A_ints: dict of key = ['limit below to limit above of bin'], value = dictionary of params for SS density at A_mid
-
-    for i in range(-1, len(bins)-2):
-        up = bins[i+2]
-        if i==-1:
-            A_mid = up-(bins[i+3]-bins[i+2])/2
-            A_mids.append(A_mid)
-        else:
-            A_mid = (down+up)/2
-            A_mids.append(A_mid)
-        A_int_ix = jnp.where((A_tril>down)&(A_tril<=up))[0]
-
-        A_key = f'{jnp.round(down,2)} to {jnp.round(up,2)}'
-        down = bins[i+2]
-
-        zeros = jnp.zeros((len_A_list))
-        A_singlevals = zeros.at[A_tril_pos].set(A_mid)
-
-        par_dict = my_utils.from_etas_to_params(coef_dict=eta_dict, p=1, 
-        model='golazo_ss', A_list=A_singlevals)
-
-        A_ints[A_key] = par_dict
-
-    A_mids = jnp.array(A_mids)
-    return A_ints, A_mids
-
 # run to have plots in LaTeX format
 
 params = {'font.family': 'serif',
@@ -447,30 +402,38 @@ plt.rcParams.update(params)
 
 fig, ax = plt.subplots( figsize=(5,4))
 
-nbins=10
-MODIFIED_A_E_ints_10, MODIFIED_A_E_mids_10  = MODIFIED_get_density_els_marginal(A_tril=A_tril_E, 
-                                                                  A_min=-2, A_max=6.5, 
-                                                                  A_tril_pos=0, 
-                                                                len_A_list=net_no, nbins=nbins,  eta_dict=etas_dict)
+# nbins=10
+# MODIFIED_A_E_ints_10, MODIFIED_A_E_mids_10  = my_utils.MODIFIED_get_density_els_marginal(A_tril=A_tril_E, 
+#                                                                   A_min=-2, A_max=6.5, 
+#                                                                   A_tril_pos=0, 
+#                                                                 len_A_list=net_no, nbins=nbins,  eta_dict=etas_dict)
 
-MODIFIED_A_P_ints_10, MODIFIED_A_P_mids_10 = MODIFIED_get_density_els_marginal(A_tril=A_tril_P, 
-                                                                                   A_min=-2, A_max=6.5,
-                                                                 A_tril_pos=1, 
-                                                                len_A_list=net_no, nbins=nbins, eta_dict=etas_dict)
+# MODIFIED_A_P_ints_10, MODIFIED_A_P_mids_10 = my_utils.MODIFIED_get_density_els_marginal(A_tril=A_tril_P, 
+#                                                                                    A_min=-2, A_max=6.5,
+#                                                                  A_tril_pos=1, 
+#                                                                 len_A_list=net_no, nbins=nbins, eta_dict=etas_dict)
 
 
-MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_P_ints_10, orient='index')
-MODIFIED_df = MODIFIED_df.astype('float64')
-MODIFIED_df_P = MODIFIED_df.round(decimals = 5)
+# MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_P_ints_10, orient='index')
+# MODIFIED_df = MODIFIED_df.astype('float64')
+# MODIFIED_df_P = MODIFIED_df.round(decimals = 5)
 
-MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_E_ints_10, orient='index')
-MODIFIED_df = MODIFIED_df.astype('float64')
-MODIFIED_df_E = MODIFIED_df.round(decimals = 5)
+# MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_E_ints_10, orient='index')
+# MODIFIED_df = MODIFIED_df.astype('float64')
+# MODIFIED_df_E = MODIFIED_df.round(decimals = 5)
 
-dfs = [MODIFIED_df_E, MODIFIED_df_P]
+Network_df = pd.DataFrame.from_dict(A_P_ints_10, orient='index')
+Network_df = Network_df.astype('float64')
+Network_df_P = Network_df.round(decimals = 5)
+
+Network_df = pd.DataFrame.from_dict(A_E_ints_10, orient='index')
+Network_df = Network_df.astype('float64')
+Network_df_E = Network_df.round(decimals = 5)
+
+dfs = [Network_df_E, Network_df_P]
 df_names = ['E', 'P']
-ticklabs = [MODIFIED_A_E_mids_10, MODIFIED_A_P_mids_10]
-legendlabs = ['Economic Distance Network', 'Policy Connectivity Index']
+ticklabs = [A_E_mids_10, A_P_mids_10]
+legendlabs = ['Economic Risks Similarity Index', 'Policy Risks Similarity Index']
 colors = ['black', 'gray']
 
 
@@ -480,7 +443,7 @@ for df_ix, df in enumerate(dfs):
     ax.set_ylabel('Probability of slab')
     ax.set_xlabel('Network values')
 
-fig.legend()
+ax.legend(loc='upper left')
 plt.yticks(rotation = 90)
 fig.tight_layout()
 fig.savefig(data_save_path + 'Figures/' + 'stock_SS_prob_slab.pdf')
@@ -489,31 +452,6 @@ plt.close()
 
 fig, ax = plt.subplots( figsize=(5,4))
 
-nbins=10
-MODIFIED_A_E_ints_10, MODIFIED_A_E_mids_10  = MODIFIED_get_density_els_marginal(A_tril=A_tril_E, 
-                                                                  A_min=-2, A_max=6.5, 
-                                                                  A_tril_pos=0, 
-                                                                len_A_list=net_no, nbins=nbins,  eta_dict=etas_dict)
-
-MODIFIED_A_P_ints_10, MODIFIED_A_P_mids_10 = MODIFIED_get_density_els_marginal(A_tril=A_tril_P, 
-                                                                                   A_min=-2, A_max=6.5,
-                                                                 A_tril_pos=1, 
-                                                                len_A_list=net_no, nbins=nbins, eta_dict=etas_dict)
-
-
-MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_P_ints_10, orient='index')
-MODIFIED_df = MODIFIED_df.astype('float64')
-MODIFIED_df_P = MODIFIED_df.round(decimals = 5)
-
-MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_E_ints_10, orient='index')
-MODIFIED_df = MODIFIED_df.astype('float64')
-MODIFIED_df_E = MODIFIED_df.round(decimals = 5)
-
-dfs = [MODIFIED_df_E, MODIFIED_df_P]
-df_names = ['E', 'P']
-ticklabs = [MODIFIED_A_E_mids_10, MODIFIED_A_P_mids_10]
-legendlabs = ['Economic Distance Network', 'Policy Connectivity Index']
-colors = ['black', 'gray']
 
 for df_ix, df in enumerate(dfs):
     ax.plot(ticklabs[df_ix], df['mean_slab'].values, linewidth=1.2, label=legendlabs[df_ix], color=colors[df_ix])
@@ -521,7 +459,7 @@ for df_ix, df in enumerate(dfs):
     ax.set_ylabel('Slab location')
     ax.set_xlabel('Network values')
 
-fig.legend()
+ax.legend(loc='upper left')
 plt.yticks(rotation = 90)
 fig.tight_layout()
 fig.savefig(data_save_path + 'Figures/' + 'stock_SS_mean_slab.pdf')
@@ -547,11 +485,11 @@ for A_ix, (A_k, vals) in enumerate(A_P_ints_10.items()):
     ax.plot(density+A_P_mids_10[A_ix], x_axis, alpha=0.3, c='gray')
     
 ax.scatter(A_tril_P, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
-#ax.set_xlim(-3,14)
-ax.set_xlim(-5,5)
-ax.set_ylim(-0.5, 0.7)
-ax.set_xlabel('Policy Connectivity Index')
-ax.set_ylabel('Partial correlation (Network-SS)')
+
+ax.set_xlim(-5.5, 3)
+ax.set_ylim(-0.2, 0.7)
+ax.set_xlabel('Policy Risks Similarity Index')
+ax.set_ylabel('Partial correlation (Network SS)')
 
 plt.yticks(rotation = 90) 
 fig.tight_layout()
@@ -578,11 +516,10 @@ for A_ix, (A_k, vals) in enumerate(A_E_ints_10.items()):
     ax.plot(density+A_E_mids_10[A_ix], x_axis, alpha=0.3, c='gray')
     
 ax.scatter(A_tril_E, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
-#ax.set_xlim(-3,14)
-ax.set_xlim(-3,5)
-ax.set_ylim(-0.5, 0.7)
-ax.set_xlabel('Economic Distance Network')
-ax.set_ylabel('Partial correlation (Network-SS)')
+ax.set_xlim(-2.5, 4)
+ax.set_ylim(-0.2, 0.7)
+ax.set_xlabel('Economic Risks Similarity Index')
+ax.set_ylabel('Partial correlation (Network SS)')
 
 plt.yticks(rotation = 90)
 fig.tight_layout()

@@ -344,14 +344,24 @@ mu_s=1.
 scale_spike_fixed =0.0033341
 
 #%%
-my_model_args = {"A_list":A_list, 
-                "eta0_0_m":0., "eta0_0_s":0.0021276, 
-        "eta0_coefs_m":0., "eta0_coefs_s":0.0021276,
-        "eta1_0_m":-2.1972246, "eta1_0_s":0.35, 
-        "eta1_coefs_m":0., "eta1_coefs_s":0.35,
-        "eta2_0_m":-10.1578947, "eta2_0_s":1.8157895, 
-        "eta2_coefs_m":0., "eta2_coefs_s":1.8157895,
+covid_mcmc_args = {"A_list":A_list, 
+                "eta0_0_m":0., "eta0_0_s":0.0015864, 
+        "eta0_coefs_m":0., "eta0_coefs_s":0.0015864,
+        "eta1_0_m":-2.1972246, "eta1_0_s":0.3, 
+        "eta1_coefs_m":0., "eta1_coefs_s":0.3,
+        "eta2_0_m":-7.7894737, "eta2_0_s":1.0263158, 
+        "eta2_coefs_m":0., "eta2_coefs_s":1.0263158,
         "mu_m":0., "mu_s":1.} 
+my_model_args = covid_mcmc_args
+
+# my_model_args = {"A_list":A_list, 
+#                 "eta0_0_m":0., "eta0_0_s":0.0021276, 
+#         "eta0_coefs_m":0., "eta0_coefs_s":0.0021276,
+#         "eta1_0_m":-2.1972246, "eta1_0_s":0.35, 
+#         "eta1_coefs_m":0., "eta1_coefs_s":0.35,
+#         "eta2_0_m":-10.1578947, "eta2_0_s":1.8157895, 
+#         "eta2_coefs_m":0., "eta2_coefs_s":1.8157895,
+#         "mu_m":0., "mu_s":1.} 
 
 
 

@@ -461,3 +461,47 @@ def get_density_els_marginal(A_tril, A_tril_pos, len_A_list, nbins, eta_dict):
 
     A_mids = jnp.array(A_mids)
     return A_ints, A_mids
+
+def MODIFIED_get_density_els_marginal(A_tril, A_min, A_max, A_tril_pos, len_A_list, nbins, eta_dict):
+    bins = np.histogram(A_tril, bins=nbins)[1] # bin values
+    delta = jnp.diff(np.histogram(A_tril, bins=nbins)[1])[0] # (fixed) difference between bins
+    if min(bins) > A_min: # if min bin of A_tril larger than A_min that I want, extrapolate
+        low = bins[0]
+        while low>A_min:
+            low -= delta
+            bins = jnp.concatenate([jnp.array([low]), bins])
+    if max(bins) < A_max: # if max bin of A_tril smaller than A_max that I want, extrapolate
+        high = bins[-1]
+        while high<A_max:
+            high += delta
+            bins = jnp.concatenate([bins, jnp.array([high])]) # extrapolated bins
+
+    A_ints = {}
+    A_mids = []
+    down = -jnp.inf
+    
+    # A_mids: Array of midpoints for each bin of the extrapolated bins of A
+    # A_ints: dict of key = ['limit below to limit above of bin'], value = dictionary of params for SS density at A_mid
+
+    for i in range(-1, len(bins)-2):
+        up = bins[i+2]
+        if i==-1:
+            A_mid = up-(bins[i+3]-bins[i+2])/2
+            A_mids.append(A_mid)
+        else:
+            A_mid = (down+up)/2
+            A_mids.append(A_mid)
+        A_int_ix = jnp.where((A_tril>down)&(A_tril<=up))[0]
+
+        A_key = f'{jnp.round(down,2)} to {jnp.round(up,2)}'
+        down = bins[i+2]
+
+        zeros = jnp.zeros((len_A_list))
+        A_singlevals = zeros.at[A_tril_pos].set(A_mid)
+        par_dict = from_etas_to_params(coef_dict=eta_dict, p=1, 
+        model='golazo_ss', A_list=A_singlevals)
+
+        A_ints[A_key] = par_dict
+
+    A_mids = jnp.array(A_mids)
+    return A_ints, A_mids

@@ -90,6 +90,7 @@ with open(FLAGS.mcmc1_path, 'rb') as fr:
 # rhos = pd.DataFrame(res_ss_geo_sci['rho_lt'])
 # rhos.to_csv(data_save_path + 'rho_lt_mcmc1.csv')
 # del rhos
+# print('rhos saved!')
 
 all_res = {"NetworkSS_geo_sci":res_ss_geo_sci}
 #%%
@@ -398,47 +399,6 @@ display(df)
 df = pd.DataFrame.from_dict(df_MAP_dict).to_latex()
 display(df)
 
-def MODIFIED_get_density_els_marginal(A_tril, A_min, A_max, A_tril_pos, len_A_list, nbins, eta_dict):
-    bins = np.histogram(A_tril, bins=nbins)[1]
-    delta = jnp.diff(np.histogram(A_tril, bins=nbins)[1])[0]
-    if min(bins) > A_min:
-        low = bins[0]
-        while low>A_min:
-            low -= delta
-            bins = jnp.concatenate([jnp.array([low]), bins])
-    if max(bins) < A_max:
-        high = bins[-1]
-        while high<A_max:
-            high += delta
-            bins = jnp.concatenate([bins, jnp.array([high])])
-
-    A_ints = {}
-    A_mids = []
-    down = -jnp.inf
-    for i in range(-1, len(bins)-2):
-        up = bins[i+2]
-        if i==-1:
-            A_mid = up-(bins[i+3]-bins[i+2])/2
-            A_mids.append(A_mid)
-        else:
-            A_mid = (down+up)/2
-            A_mids.append(A_mid)
-        A_int_ix = jnp.where((A_tril>down)&(A_tril<=up))[0]
-
-        A_key = f'{jnp.round(down,2)} to {jnp.round(up,2)}'
-        down = bins[i+2]
-
-        zeros = jnp.zeros((len_A_list))
-        A_singlevals = zeros.at[A_tril_pos].set(A_mid)
-
-        par_dict = my_utils.from_etas_to_params(coef_dict=eta_dict, p=1, 
-        model='golazo_ss', A_list=A_singlevals)
-
-        A_ints[A_key] = par_dict
-
-    A_mids = jnp.array(A_mids)
-    return A_ints, A_mids
-
 # run to have plots in LaTeX format
 
 params = {'font.family': 'serif',
@@ -457,37 +417,49 @@ plt.rcParams.update(params)
 fig, ax = plt.subplots( figsize=(5,4))
 
 nbins=10
-MODIFIED_A_geo_ints_10, MODIFIED_A_geo_mids_10  = MODIFIED_get_density_els_marginal(A_tril=A_tril_geo, 
-                                                                  A_min=-2, A_max=6.5, 
-                                                                  A_tril_pos=0, 
-                                                                len_A_list=net_no, nbins=nbins,  eta_dict=etas_dict)
+# MODIFIED_A_geo_ints_10, MODIFIED_A_geo_mids_10  = my_utils.MODIFIED_get_density_els_marginal(A_tril=A_tril_geo, 
+#                                                                   A_min=-2, A_max=6.5, 
+#                                                                   A_tril_pos=0, 
+#                                                                 len_A_list=net_no, nbins=nbins,  eta_dict=etas_dict)
 
-MODIFIED_A_sci_ints_10, MODIFIED_A_sci_mids_10 = MODIFIED_get_density_els_marginal(A_tril=A_tril_sci, 
-                                                                                   A_min=-2, A_max=6.5,
-                                                                 A_tril_pos=1, 
-                                                                len_A_list=net_no, nbins=nbins, eta_dict=etas_dict)
+# MODIFIED_A_sci_ints_10, MODIFIED_A_sci_mids_10 = my_utils.MODIFIED_get_density_els_marginal(A_tril=A_tril_sci, 
+#                                                                                    A_min=-2, A_max=6.5,
+#                                                                  A_tril_pos=1, 
+#                                                                 len_A_list=net_no, nbins=nbins, eta_dict=etas_dict)
 
-MODIFIED_A_flights_ints_10, MODIFIED_A_flights_mids_10 = MODIFIED_get_density_els_marginal(A_tril=A_tril_flights, 
-                                                                                   A_min=-2, A_max=6.5,
-                                                                 A_tril_pos=2, 
-                                                                len_A_list=net_no, nbins=nbins, eta_dict=etas_dict)
+# MODIFIED_A_flights_ints_10, MODIFIED_A_flights_mids_10 = my_utils.MODIFIED_get_density_els_marginal(A_tril=A_tril_flights, 
+#                                                                                    A_min=-2, A_max=6.5,
+#                                                                  A_tril_pos=2, 
+#                                                                 len_A_list=net_no, nbins=nbins, eta_dict=etas_dict)
 
 
-MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_sci_ints_10, orient='index')
-MODIFIED_df = MODIFIED_df.astype('float64')
-MODIFIED_df_sci = MODIFIED_df.round(decimals = 5)
+# MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_sci_ints_10, orient='index')
+# MODIFIED_df = MODIFIED_df.astype('float64')
+# MODIFIED_df_sci = MODIFIED_df.round(decimals = 5)
 
-MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_geo_ints_10, orient='index')
-MODIFIED_df = MODIFIED_df.astype('float64')
-MODIFIED_df_geo = MODIFIED_df.round(decimals = 5)
+# MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_geo_ints_10, orient='index')
+# MODIFIED_df = MODIFIED_df.astype('float64')
+# MODIFIED_df_geo = MODIFIED_df.round(decimals = 5)
 
-MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_flights_ints_10, orient='index')
-MODIFIED_df = MODIFIED_df.astype('float64')
-MODIFIED_df_flights = MODIFIED_df.round(decimals = 5)
+# MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_flights_ints_10, orient='index')
+# MODIFIED_df = MODIFIED_df.astype('float64')
+# MODIFIED_df_flights = MODIFIED_df.round(decimals = 5)
 
-dfs = [MODIFIED_df_geo, MODIFIED_df_sci, MODIFIED_df_flights]
+Network_df = pd.DataFrame.from_dict(A_geo_ints_10, orient='index')
+Network_df = Network_df.astype('float64')
+Network_df_geo = Network_df.round(decimals = 5)
+
+Network_df = pd.DataFrame.from_dict(A_sci_ints_10, orient='index')
+Network_df = Network_df.astype('float64')
+Network_df_sci = Network_df.round(decimals = 5)
+
+Network_df = pd.DataFrame.from_dict(A_flights_ints_10, orient='index')
+Network_df = Network_df.astype('float64')
+Network_df_flights = Network_df.round(decimals = 5)
+
+dfs = [Network_df_geo, Network_df_sci, Network_df_flights]
 df_names = ['geo', 'sci', 'flights']
-ticklabs = [MODIFIED_A_geo_mids_10, MODIFIED_A_sci_mids_10, MODIFIED_A_flights_mids_10 ]
+ticklabs = [A_geo_mids_10, A_sci_mids_10, A_flights_mids_10 ]
 legendlabs = ['Geographical Closeness Network', 'Facebook Connectivity Index', 'Flights Connectivity Network']
 colors = ['black', 'gray', 'blue']
 
@@ -498,7 +470,7 @@ for df_ix, df in enumerate(dfs):
     ax.set_ylabel('Probability of slab')
     ax.set_xlabel('Network values')
 
-fig.legend()
+ax.legend(loc='upper left')
 plt.yticks(rotation = 90)
 fig.tight_layout()
 fig.savefig(data_save_path + 'Figures/' + 'COVID_SS_prob_slab.pdf')
@@ -508,39 +480,6 @@ plt.close()
 fig, ax = plt.subplots( figsize=(5,4))
 
 nbins=10
-MODIFIED_A_geo_ints_10, MODIFIED_A_geo_mids_10  = MODIFIED_get_density_els_marginal(A_tril=A_tril_geo, 
-                                                                  A_min=-2, A_max=6.5, 
-                                                                  A_tril_pos=0, 
-                                                                len_A_list=net_no, nbins=nbins,  eta_dict=etas_dict)
-
-MODIFIED_A_sci_ints_10, MODIFIED_A_sci_mids_10 = MODIFIED_get_density_els_marginal(A_tril=A_tril_sci, 
-                                                                                   A_min=-2, A_max=6.5,
-                                                                 A_tril_pos=1, 
-                                                                len_A_list=net_no, nbins=nbins, eta_dict=etas_dict)
-
-MODIFIED_A_flights_ints_10, MODIFIED_A_flights_mids_10 = MODIFIED_get_density_els_marginal(A_tril=A_tril_flights, 
-                                                                                   A_min=-2, A_max=6.5,
-                                                                 A_tril_pos=2, 
-                                                                len_A_list=net_no, nbins=nbins, eta_dict=etas_dict)
-
-
-MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_sci_ints_10, orient='index')
-MODIFIED_df = MODIFIED_df.astype('float64')
-MODIFIED_df_sci = MODIFIED_df.round(decimals = 5)
-
-MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_geo_ints_10, orient='index')
-MODIFIED_df = MODIFIED_df.astype('float64')
-MODIFIED_df_geo = MODIFIED_df.round(decimals = 5)
-
-MODIFIED_df = pd.DataFrame.from_dict(MODIFIED_A_flights_ints_10, orient='index')
-MODIFIED_df = MODIFIED_df.astype('float64')
-MODIFIED_df_flights = MODIFIED_df.round(decimals = 5)
-
-dfs = [MODIFIED_df_geo, MODIFIED_df_sci, MODIFIED_df_flights]
-df_names = ['geo', 'sci', 'flights']
-ticklabs = [MODIFIED_A_geo_mids_10, MODIFIED_A_sci_mids_10, MODIFIED_A_flights_mids_10 ]
-legendlabs = ['Geographical Closeness Network', 'Facebook Connectivity Index', 'Flights Connectivity Network']
-colors = ['black', 'gray', 'blue']
 
 for df_ix, df in enumerate(dfs):
     ax.plot(ticklabs[df_ix], df['mean_slab'].values, linewidth=1.2, label=legendlabs[df_ix], color=colors[df_ix])
@@ -548,7 +487,7 @@ for df_ix, df in enumerate(dfs):
     ax.set_ylabel('Slab location')
     ax.set_xlabel('Network values')
 
-fig.legend()
+ax.legend(loc='upper left')
 plt.yticks(rotation = 90)
 fig.tight_layout()
 fig.savefig(data_save_path + 'Figures/' + 'COVID_SS_mean_slab.pdf')
@@ -607,7 +546,7 @@ for A_ix, (A_k, vals) in enumerate(A_geo_ints_10.items()):
 ax.scatter(A_tril_geo, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
 #ax.set_xlim(-3,14)
 ax.set_xlim(-3,12)
-ax.set_ylim(-0.5, 0.7)
+ax.set_ylim(-0.2, 0.7)
 ax.set_xlabel('Geographical Closeness Network')
 ax.set_ylabel('Partial correlation (Network-SS)')
 
@@ -639,7 +578,7 @@ for A_ix, (A_k, vals) in enumerate(A_flights_ints_10.items()):
 ax.scatter(A_tril_flights, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
 #ax.set_xlim(-3,14)
 ax.set_xlim(-3,12)
-ax.set_ylim(-0.5, 0.7)
+ax.set_ylim(-0.2, 0.7)
 ax.set_xlabel('Flights Connectivity Network')
 ax.set_ylabel('Partial correlation (Network-SS)')
 

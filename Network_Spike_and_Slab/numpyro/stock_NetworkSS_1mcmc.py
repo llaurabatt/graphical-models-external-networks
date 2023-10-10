@@ -79,15 +79,23 @@ P_clean = jnp.array(jnp.load(data_path + network_names[1]))
 # P_clean = P_clean[:100, :100].copy()
 A_list = [E_clean, P_clean]
 
-
-mcmc_args = {"A_list":A_list, 
-                "eta0_0_m":0., "eta0_0_s":0.0021276, 
-        "eta0_coefs_m":0., "eta0_coefs_s":0.0021276,
-        "eta1_0_m":-2.1972246, "eta1_0_s":0.35, 
-        "eta1_coefs_m":0., "eta1_coefs_s":0.35,
-        "eta2_0_m":-10.1578947, "eta2_0_s":1.8157895, 
-        "eta2_coefs_m":0., "eta2_coefs_s":1.8157895,
+covid_mcmc_args = {"A_list":A_list, 
+                "eta0_0_m":0., "eta0_0_s":0.0015864, 
+        "eta0_coefs_m":0., "eta0_coefs_s":0.0015864,
+        "eta1_0_m":-2.1972246, "eta1_0_s":0.3, 
+        "eta1_coefs_m":0., "eta1_coefs_s":0.3,
+        "eta2_0_m":-7.7894737, "eta2_0_s":1.0263158, 
+        "eta2_coefs_m":0., "eta2_coefs_s":1.0263158,
         "mu_m":0., "mu_s":1.} 
+
+# mcmc_args = {"A_list":A_list, 
+#                 "eta0_0_m":0., "eta0_0_s":0.0021276, 
+#         "eta0_coefs_m":0., "eta0_coefs_s":0.0021276,
+#         "eta1_0_m":-2.1972246, "eta1_0_s":0.35, 
+#         "eta1_coefs_m":0., "eta1_coefs_s":0.35,
+#         "eta2_0_m":-10.1578947, "eta2_0_s":1.8157895, 
+#         "eta2_coefs_m":0., "eta2_coefs_s":1.8157895,
+#         "mu_m":0., "mu_s":1.} 
 
 # TO-DO: stop-and-start chain not working at the moment
 # def get_init_file(dir, checkpoint):
@@ -111,7 +119,7 @@ mcmc_args = {"A_list":A_list,
 #     CP_init = 0
 
 mcmc1_init(my_model=my_model, thinning=thinning, my_vals=stock_vals,
-        my_model_args=mcmc_args, n_samples=n_samples,
+        my_model_args=covid_mcmc_args, n_samples=n_samples,
         root_dir=_ROOT_DIR, data_save_path=data_save_path, seed=SEED, init_strategy=init_strategy)
 
 # TO-DO: stop-and-start chain not working at the moment

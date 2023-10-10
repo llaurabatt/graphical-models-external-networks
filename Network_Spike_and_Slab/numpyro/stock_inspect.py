@@ -30,13 +30,13 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/Stock/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'stock_NetworkSS_etarepr_loglikrepr_newprior_SEED6/'
+data_save_path = _ROOT_DIR + 'stock_NetworkSS_etarepr_loglikrepr_covidprior_SEED6/'
 # data_save_path2 = _ROOT_DIR + 'NetworkSS_results_etarepr_loglikrepr_newprior_seed6/'
 
 #%%
 # with open(data_save_path + 'NetworkSS_1mcmc_p332_s1000_aggregate.sav', 'rb') as fr:
 # with open(data_save_path + 'NetworkSS_1mcmc_p332_w50_s400_CP900.sav', 'rb') as fr:
-with open(data_save_path + 'NetworkSS_1mcmc_p366_w1000_s10000_CP10000.sav', 'rb') as fr:
+with open(data_save_path + 'NetworkSS_1mcmc_p366_w1000_s5000_CP5000.sav', 'rb') as fr:
 # with open(data_save_path + 'NetworkSS_2mcmc_p332_w3_s20.sav', 'rb') as fr:
     res_ss_E_P = pickle.load(fr)
     

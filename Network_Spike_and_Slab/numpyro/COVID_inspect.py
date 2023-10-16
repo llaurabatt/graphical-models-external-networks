@@ -77,6 +77,7 @@ for k in cols_2:
                     }
         
 df_NetworkSS_etas_spec = pd.DataFrame.from_dict(etas_NetworkSS, orient='index')
+df_NetworkSS_etas_spec['r_hat-1']  = df_NetworkSS_etas_spec.r_hat -1 
 # %%
 display(df_NetworkSS_etas_spec)
 # %%
@@ -114,12 +115,43 @@ stats = {'mean':float(rho_rhat_goodESS.mean()), 'std':float(rho_rhat_goodESS.std
 display(stats)
 
 # %%
-covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_332_meta_pruned.csv', index_col='Unnamed: 0').values)
-n, p = covid_vals.shape
-mu = jnp.zeros(p)
-y_bar = covid_vals.mean(axis=0) #p
-S_bar = covid_vals.T@covid_vals/n - jnp.outer(y_bar, y_bar) #(p,p)
-precision_matrix = jnp.identity(p)*0.75 + jnp.ones((p,p))*0.25
+### For the paper
+print('mean ESS of etas', np.mean(df_NetworkSS_etas_spec['ESS']))
+print('mean rhat of etas', np.mean(df_NetworkSS_etas_spec['r_hat']))
+print('max rhat-1 of etas:', max(np.abs(df_NetworkSS_etas_spec['r_hat-1'])))
+# %%
+with open(_ROOT_DIR + 'MERGE3_6_NetworkSS_results_etarepr_loglikrepr_newprior/NetworkSS_2mcmc_p332_w1000_s2000.sav', 'rb') as fr:
+    mcmc2_ss_nets = pickle.load(fr)
+# %%
+rho_no = mcmc2_ss_nets['rho_lt'].shape[1]
+rho_ESS = []
+for rho_ix in range(rho_no):
+    rho_ESS.append(numpyro.diagnostics.summary(jnp.expand_dims(mcmc2_ss_nets['rho_lt'][:,rho_ix],0))['Param:0']['n_eff'])
+rho_ESS = jnp.array(rho_ESS)
+# %%
+rho_no = mcmc2_ss_nets['rho_lt'].shape[1]
+rho_rhat = []
+for rho_ix in range(rho_no):
+    rho_rhat.append(numpyro.diagnostics.summary(jnp.expand_dims(mcmc2_ss_nets['rho_lt'][:,rho_ix],0))['Param:0']['r_hat'])
+rho_rhat = jnp.array(rho_rhat)
+# %%
+print('2mcmc: Total rho number:', len(rho_ESS))
+print('ESS stats:')
+stats = {'mean':float(rho_ESS.mean()), 'std':float(rho_ESS.std()), 'median':float(jnp.median(rho_ESS)), 'max':float(rho_ESS.max()), 
+'min':float(rho_ESS.min()), '<10':float(sum(rho_ESS<10)), '>100':float(sum(rho_ESS>100))}
+display(stats)
+
+print('2mcmc: R hat stats:')
+stats = {'mean':float(rho_rhat.mean()), 'std':float(rho_rhat.std()), 'median':float(jnp.median(rho_rhat)), 'max':float(rho_rhat.max()), 
+'min':float(rho_rhat.min()), '<1.1':float(sum(rho_rhat<1.1))}
+display(stats) 
+# %%
+# covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_332_meta_pruned.csv', index_col='Unnamed: 0').values)
+# n, p = covid_vals.shape
+# mu = jnp.zeros(p)
+# y_bar = covid_vals.mean(axis=0) #p
+# S_bar = covid_vals.T@covid_vals/n - jnp.outer(y_bar, y_bar) #(p,p)
+# precision_matrix = jnp.identity(p)*0.75 + jnp.ones((p,p))*0.25
 # %%
 # def loglik(mu, precision_matrix, y_bar, S_bar, n, p): 
 #     slogdet = jnp.linalg.slogdet(precision_matrix)

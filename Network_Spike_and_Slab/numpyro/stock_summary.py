@@ -332,7 +332,16 @@ A_P_ints_10, A_P_mids_10 = my_utils.get_density_els_marginal(A_tril=A_tril_P,
                                                                 len_A_list=net_no, nbins=nbins, 
                          eta_dict=etas_dict)
 
+nbins=25
+A_E_ints_25, A_E_mids_25  = my_utils.get_density_els_marginal(A_tril=A_tril_E, 
+                                                                  A_tril_pos=0, 
+                                                                len_A_list=net_no, nbins=nbins, 
+                         eta_dict=etas_dict)
 
+A_P_ints_25, A_P_mids_25 = my_utils.get_density_els_marginal(A_tril=A_tril_P, 
+                                                                 A_tril_pos=1, 
+                                                                len_A_list=net_no, nbins=nbins, 
+                         eta_dict=etas_dict)
 ## Final plots
 
 def get_credible_interval(post_chain):
@@ -422,17 +431,17 @@ fig, ax = plt.subplots( figsize=(5,4))
 # MODIFIED_df = MODIFIED_df.astype('float64')
 # MODIFIED_df_E = MODIFIED_df.round(decimals = 5)
 
-Network_df = pd.DataFrame.from_dict(A_P_ints_10, orient='index')
+Network_df = pd.DataFrame.from_dict(A_P_ints_25, orient='index')
 Network_df = Network_df.astype('float64')
 Network_df_P = Network_df.round(decimals = 5)
 
-Network_df = pd.DataFrame.from_dict(A_E_ints_10, orient='index')
+Network_df = pd.DataFrame.from_dict(A_E_ints_25, orient='index')
 Network_df = Network_df.astype('float64')
 Network_df_E = Network_df.round(decimals = 5)
 
 dfs = [Network_df_E, Network_df_P]
 df_names = ['E', 'P']
-ticklabs = [A_E_mids_10, A_P_mids_10]
+ticklabs = [A_E_mids_25, A_P_mids_25]
 legendlabs = ['Economic Risks Similarity Index', 'Policy Risks Similarity Index']
 colors = ['black', 'gray']
 

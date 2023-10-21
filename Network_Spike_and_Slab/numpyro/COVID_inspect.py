@@ -30,14 +30,12 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'NetworkSS_results_etarepr_loglikrepr_newprior/'
-data_save_path2 = _ROOT_DIR + 'NetworkSS_results_etarepr_loglikrepr_newprior_seed6/'
+data_save_path = _ROOT_DIR + 'COVID_SS_etarepr_newprior_newlogrepr_seed6/' #'NetworkSS_results_etarepr_loglikrepr_newprior/'
+data_save_path2 = _ROOT_DIR + 'COVID_SS_etarepr_newprior_newlogrepr_seed9/'#'NetworkSS_results_etarepr_loglikrepr_newprior_seed6/'
 
 #%%
-# with open(data_save_path + 'NetworkSS_1mcmc_p332_s1000_aggregate.sav', 'rb') as fr:
-# with open(data_save_path + 'NetworkSS_1mcmc_p332_w50_s400_CP900.sav', 'rb') as fr:
+
 with open(data_save_path + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000.sav', 'rb') as fr:
-# with open(data_save_path + 'NetworkSS_2mcmc_p332_w3_s20.sav', 'rb') as fr:
     res_ss_geo_sci = pickle.load(fr)
     
 with open(data_save_path2 + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000.sav', 'rb') as fr:
@@ -117,10 +115,13 @@ display(stats)
 # %%
 ### For the paper
 print('mean ESS of etas', np.mean(df_NetworkSS_etas_spec['ESS']))
+print('min ESS of etas', min(df_NetworkSS_etas_spec['ESS']))
 print('mean rhat of etas', np.mean(df_NetworkSS_etas_spec['r_hat']))
-print('max rhat-1 of etas:', max(np.abs(df_NetworkSS_etas_spec['r_hat-1'])))
+print('max abs(rhat-1) of etas:', max(np.abs(df_NetworkSS_etas_spec['r_hat-1'])))
+print('mean abs(rhat-1) of etas:', np.mean(np.abs(df_NetworkSS_etas_spec['r_hat-1'])))
+
 # %%
-with open(_ROOT_DIR + 'MERGE3_6_NetworkSS_results_etarepr_loglikrepr_newprior/NetworkSS_2mcmc_p332_w1000_s2000.sav', 'rb') as fr:
+with open(_ROOT_DIR + 'MERGE_3_6_COVID_SS_etarepr_newprior_newlogrepr/NetworkSS_2mcmc_p332_w1000_s4000.sav', 'rb') as fr:
     mcmc2_ss_nets = pickle.load(fr)
 # %%
 rho_no = mcmc2_ss_nets['rho_lt'].shape[1]
@@ -143,7 +144,8 @@ display(stats)
 
 print('2mcmc: R hat stats:')
 stats = {'mean':float(rho_rhat.mean()), 'std':float(rho_rhat.std()), 'median':float(jnp.median(rho_rhat)), 'max':float(rho_rhat.max()), 
-'min':float(rho_rhat.min()), '<1.1':float(sum(rho_rhat<1.1))}
+'min':float(rho_rhat.min()), '<1.1':float(sum(rho_rhat<1.1)),
+'mean(abs(rhat-1))':np.mean(np.abs(rho_rhat-1)), 'max(abs(rhat-1))':max(np.abs(rho_rhat-1))}
 display(stats) 
 # %%
 # covid_vals = jnp.array(pd.read_csv(data_path + 'COVID_332_meta_pruned.csv', index_col='Unnamed: 0').values)
@@ -160,7 +162,7 @@ display(stats)
 # loglik(mu=mu, precision_matrix=precision_matrix, 
 #        y_bar=y_bar, S_bar=S_bar, n=n, p=p)
 # %%
-filename =  _ROOT_DIR + 'MERGE3_6_NetworkSS_results_etarepr_loglikrepr_newprior/'
+filename =  _ROOT_DIR + 'MERGE_3_6_COVID_SS_etarepr_newprior_newlogrepr/'
 if not os.path.exists(filename):
     os.makedirs(filename, mode=0o777)
 

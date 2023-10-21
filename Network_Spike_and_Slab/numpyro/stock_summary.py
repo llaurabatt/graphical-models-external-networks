@@ -226,7 +226,7 @@ for i, res in all_res_2MCMC.items():
                                         scale_slab=scale_slab, 
                                         scale_spike=scale_spike_fixed, 
                                         w_slab=w_slab, 
-                                        w_spike=(1-w_slab)[cs])
+                                        w_spike=(1-w_slab))
         prob_slab_all.append(prob_slab)
     prob_slab_est = (jnp.array(prob_slab_all)).mean(0)    
     nonzero_preds_5 = (prob_slab_est>0.5).astype(int)

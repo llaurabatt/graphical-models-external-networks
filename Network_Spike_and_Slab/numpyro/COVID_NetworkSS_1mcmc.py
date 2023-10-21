@@ -1,10 +1,10 @@
 # #%%
 """Main script for training the model."""
-# import debugpy
-# debugpy.listen(5678)
-# print('Waiting for debugger')
-# debugpy.wait_for_client()
-# print('Debugger attached')
+import debugpy
+debugpy.listen(5678)
+print('Waiting for debugger')
+debugpy.wait_for_client()
+print('Debugger attached')
 #%%
 # imports
 import sys
@@ -62,6 +62,7 @@ init_strategy = FLAGS.init_strategy
 network_names = FLAGS.network_list
 print(network_names)
 print(FLAGS.model)
+print(init_strategy)
 
 
 data_save_path = FLAGS.data_save_path

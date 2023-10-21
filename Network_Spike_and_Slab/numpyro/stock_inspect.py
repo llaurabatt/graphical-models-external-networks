@@ -31,17 +31,11 @@ sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_an
 
 data_path = './Data/Stock/Pre-processed Data/'
 data_save_path = _ROOT_DIR + 'stock_NetworkSS_etarepr_loglikrepr_newprior_SEED6/'
-# data_save_path2 = _ROOT_DIR + 'NetworkSS_results_etarepr_loglikrepr_newprior_seed6/'
 
 #%%
-# with open(data_save_path + 'NetworkSS_1mcmc_p332_s1000_aggregate.sav', 'rb') as fr:
-# with open(data_save_path + 'NetworkSS_1mcmc_p332_w50_s400_CP900.sav', 'rb') as fr:
 with open(data_save_path + 'NetworkSS_1mcmc_p366_w1000_s10000_CP10000.sav', 'rb') as fr:
-# with open(data_save_path + 'NetworkSS_2mcmc_p332_w3_s20.sav', 'rb') as fr:
     res_ss_E_P = pickle.load(fr)
     
-# with open(data_save_path2 + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000.sav', 'rb') as fr:
-#     res_ss_geo_sci2 = pickle.load(fr)
 
 uni_cols = ['eta0_0', 'eta1_0', 'eta2_0', 'tilde_eta0_0', 'tilde_eta1_0', 'tilde_eta2_0', 'potential_energy']
 res_ss_E_P = {k:v[:,None] if k in uni_cols else v for k,v in res_ss_E_P.items() }
@@ -111,7 +105,10 @@ display(stats)
 
 # %%
 ### For the paper
-print(max(np.abs(df_NetworkSS_etas_spec['r_hat-1'])))
+print('mean ESS of etas', np.mean(df_NetworkSS_etas_spec['ESS']))
+print('mean rhat of etas', np.mean(df_NetworkSS_etas_spec['r_hat']))
+print('max rhat-1 of etas:', max(np.abs(df_NetworkSS_etas_spec['r_hat-1'])))
+# %%
 
 with open(data_save_path + 'NetworkSS_2mcmc_p366_w1000_s2000_seed9.sav', 'rb') as fr:
     mcmc2_ss_E_P = pickle.load(fr)

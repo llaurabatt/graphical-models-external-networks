@@ -1,10 +1,10 @@
 # #%%
 """Main script for training the model."""
-import debugpy
-debugpy.listen(5678)
-print('Waiting for debugger')
-debugpy.wait_for_client()
-print('Debugger attached')
+# import debugpy
+# debugpy.listen(5678)
+# print('Waiting for debugger')
+# debugpy.wait_for_client()
+# print('Debugger attached')
 #%%
 # imports
 from absl import flags
@@ -29,7 +29,7 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'MERGE3_6_NetworkSS_results_etarepr_loglikrepr_newprior/'
+data_save_path = _ROOT_DIR + 'MERGE_3_6_COVID_SS_etarepr_newprior_newlogrepr/'
 if not os.path.exists(data_save_path + 'Figures/'):
     os.makedirs(data_save_path + 'Figures/', mode=0o777)
 # load models and functions
@@ -229,7 +229,7 @@ for i, res in all_res_2MCMC.items():
                                         scale_slab=scale_slab, 
                                         scale_spike=scale_spike_fixed, 
                                         w_slab=w_slab, 
-                                        w_spike=(1-w_slab)[cs])
+                                        w_spike=(1-w_slab))
         prob_slab_all.append(prob_slab)
     prob_slab_est = (jnp.array(prob_slab_all)).mean(0)    
     nonzero_preds_5 = (prob_slab_est>0.5).astype(int)

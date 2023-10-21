@@ -482,8 +482,8 @@ def NetworkSS_repr_etaRepr_loglikRepr(A_list,
 
 def loglik(mu, precision_matrix, y_bar, S_bar, n, p): 
         slogdet = jnp.linalg.slogdet(precision_matrix)
-        return n*(-0.5*p*jnp.log(2*jnp.pi) + 0.5*slogdet[0]*slogdet[1] - 0.5*((y_bar - mu).T)@precision_matrix@(y_bar - mu) - 0.5*jnp.trace(S_bar@precision_matrix))
-
+        # return n*(-0.5*p*jnp.log(2*jnp.pi) + 0.5*slogdet[0]*slogdet[1] - 0.5*((y_bar - mu).T)@precision_matrix@(y_bar - mu) - 0.5*jnp.trace(S_bar@precision_matrix))
+        return n*(-0.5*p*jnp.log(2*jnp.pi) + 0.5*(jnp.log(slogdet[0]) + slogdet[1]) - 0.5*((y_bar - mu).T)@precision_matrix@(y_bar - mu) - 0.5*jnp.trace(S_bar@precision_matrix))
 
 #%%
 def NetworkSS_repr_loglikRepr(A_list,eta0_0_m, eta0_0_s, eta1_0_m, eta1_0_s, eta2_0_m, eta2_0_s,

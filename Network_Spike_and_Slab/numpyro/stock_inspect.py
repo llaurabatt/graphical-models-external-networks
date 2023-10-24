@@ -30,7 +30,7 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/Stock/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'stock_NetworkSS_etarepr_loglikrepr_newprior_SEED6/'
+data_save_path = _ROOT_DIR + 'stock_SS_etarepr_newprior_newlogrepr_seed6/'
 
 #%%
 with open(data_save_path + 'NetworkSS_1mcmc_p366_w1000_s10000_CP10000.sav', 'rb') as fr:
@@ -106,11 +106,13 @@ display(stats)
 # %%
 ### For the paper
 print('mean ESS of etas', np.mean(df_NetworkSS_etas_spec['ESS']))
+print('min ESS of etas', min(df_NetworkSS_etas_spec['ESS']))
 print('mean rhat of etas', np.mean(df_NetworkSS_etas_spec['r_hat']))
-print('max rhat-1 of etas:', max(np.abs(df_NetworkSS_etas_spec['r_hat-1'])))
+print('max abs(rhat-1) of etas:', max(np.abs(df_NetworkSS_etas_spec['r_hat-1'])))
+print('mean abs(rhat-1) of etas:', np.mean(np.abs(df_NetworkSS_etas_spec['r_hat-1'])))
 # %%
 
-with open(data_save_path + 'NetworkSS_2mcmc_p366_w1000_s2000_seed9.sav', 'rb') as fr:
+with open(data_save_path + 'NetworkSS_2mcmc_p366_w1000_s4000_seed6.sav', 'rb') as fr:
     mcmc2_ss_E_P = pickle.load(fr)
 
 # %%
@@ -134,7 +136,8 @@ display(stats)
 
 print('2mcmc: R hat stats:')
 stats = {'mean':float(rho_rhat.mean()), 'std':float(rho_rhat.std()), 'median':float(jnp.median(rho_rhat)), 'max':float(rho_rhat.max()), 
-'min':float(rho_rhat.min()), '<1.1':float(sum(rho_rhat<1.1))}
+'min':float(rho_rhat.min()), '<1.1':float(sum(rho_rhat<1.1)),
+'mean(abs(rhat-1))':np.mean(np.abs(rho_rhat-1)), 'max(abs(rhat-1))':max(np.abs(rho_rhat-1))}
 display(stats)  
 
 # %%

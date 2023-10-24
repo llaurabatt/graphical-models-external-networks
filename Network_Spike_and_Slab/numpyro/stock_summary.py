@@ -29,7 +29,7 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/Stock/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'stock_NetworkSS_etarepr_loglikrepr_newprior_SEED6/'
+data_save_path = _ROOT_DIR + 'stock_SS_etarepr_newprior_newlogrepr_seed6/'
 if not os.path.exists(data_save_path + 'Figures/'):
     os.makedirs(data_save_path + 'Figures/', mode=0o777)
 # load models and functions

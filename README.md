@@ -29,9 +29,9 @@ The folder `Pre-processed Data` contains the output files of our pre-processing,
 #### Clustering the conties
 
 I order to reproduce our clustering of the 
-+ COVID19 data preprocessing allCounties.Rmd reads in the raw data for all counties in the US and preprocess the data read to be clusterd into meta-counties
-+ clustering_algo_flights2.ipynb clusters the data data into meta counties
-+ COVID19 data preprocessing allClustered.Rmd reads in the clustered data and produces the residuals and network matricies
++ `COVID19 data preprocessing allCounties.Rmd` reads in the raw data for all counties in the US and preprocess the data read to be clusterd into meta-counties
++ `clustering_algo_flights2.ipynb` clusters the data data into meta counties
++ `COVID19 data preprocessing allClustered.Rmd` reads in the clustered data and produces the residuals and network matricies
 
 #### Flight Data
 

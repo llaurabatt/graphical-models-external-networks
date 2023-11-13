@@ -1,0 +1,643 @@
+---
+title: "Network GLASSO Simulation"
+output: html_notebook
+---
+
+This R Notebook provides a implementation of the siGGM method of Higgins et al.(2018)'s for our Simulated Data experiments
+
+## working directory
+
+```{r working_directory, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+data_dir <- '/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/paper_code_github/'
+
+```
+
+
+# 1. Load data and define functions
+## 1.1 Load packages  
+
+```{R}
+# install.packages('rjson')
+library(rjson)
+
+# library("devtools")
+# devtools::install_github("IxavierHiggins/siGGMrepo")
+#(For Windows, install QUIC_1.1.1 tar.gz(https://cran.r-project.org/contrib/main/00Archive/QUIC/) by hand)
+#(For Mac OS, find the Mac version, then download and install from https://github.com/fxcoudert/gfortran-for-macOS/releases)
+
+library(siGGM)
+
+```
+
+
+## 1.2 Define functions
+
+```{R}
+
+# This function is used for getting exact 0's in partial correlation (Rho)
+threshold <- function(Rho_mat, threshold){
+  return(Rho_mat*(abs(Rho_mat) >= threshold))
+}
+```
+
+## 1.3 Hyperparameters
+
+```{R}
+edge.tol   <- 1e-6  
+
+```
+
+## 1.4 Load simulation data generated from Python
+
+```{R}
+
+n_sims <- 50    # repeats of simulation
+p <- 10         # dimension, here we use p = 10/50
+
+data_path <- paste0(data_dir,"Data/Simulations/sim0_p", p, "_n2000.json")   ## correspond to sim0_p10_n2000 dataset
+data <- fromJSON(file=data_path)
+var_names <- paste0('p', seq(1,p))
+
+```
+
+
+## 1.5 Extract information of simulation data and network matrices
+
+```{R}
+# The true inverse covariance matrix
+theta_true<- data.matrix(as.data.frame(data.table::transpose(data['theta_true']$theta_true), col.names = var_names))
+
+# The strongly informative network
+A_semi_dep85<- data.matrix(as.data.frame(data.table::transpose(data['A_semi_dep85']$A_semi_dep85), col.names = var_names))
+A_scaled_semi_dep85<- data.matrix(as.data.frame(data.table::transpose(data['A_scaled_semi_dep85']$A_scaled_semi_dep85), col.names = var_names))
+
+# The mildly informative network
+A_semi_dep<- data.matrix(as.data.frame(data.table::transpose(data['A_semi_dep']$A_semi_dep), col.names = var_names))
+A_scaled_semi_dep<- data.matrix(as.data.frame(data.table::transpose(data['A_scaled_semi_dep']$A_scaled_semi_dep), col.names = var_names))
+
+# The independent network
+A_indep<- data.matrix(as.data.frame(data.table::transpose(data['A_indep']$A_indep), col.names = var_names))
+A_scaled_indep<- data.matrix(as.data.frame(data.table::transpose(data['A_scaled_indep']$A_scaled_indep), col.names = var_names))
+
+
+mu_true<- data.matrix(as.data.frame(t(data['mu_true']$mu_true)))
+names(mu_true) <- var_names
+overall_n <- data['n']$n
+
+```
+
+
+
+## 1.6 Create a list of the extracted Y for each repeats
+
+```{R}
+Y_list <- list()
+
+for (i in seq(0, n_sims-1)){
+  data_path <- paste0(data_dir,"Data/Simulations/sim", i, "_p", p, "_n2000.json")
+  data <- fromJSON(file=data_path)
+  Y_df<- as.data.frame(data.table::transpose(data['Y']$Y), col.names = var_names)
+  Y_list[[i+1]]<-Y_df
+}
+```
+
+
+
+## 1.7 Convert list to array
+```{R}
+N <- n_sims
+
+X_repeats <- list()
+
+for(j in 1: N){ 
+  X_repeats[[j]] <- Y_list[[j]]
+}
+
+X_repeats <- array(unlist(X_repeats),dim=c(2000, p, N))
+str(X_repeats)
+```
+
+
+## 1.8 Define the sample size
+
+```{R}
+  n <- 100        
+# n <- 200
+# n <- 500
+```
+
+
+# 3. siGGM - A_Indep
+
+## 3.1 Basic setting
+
+```{R}
+
+SC <- A_scaled_indep
+diag(SC) <- 0
+
+## Summary statistics
+Rho_zeros <- cov2cor(theta_true)[lower.tri(cov2cor(theta_true))]   ## remember -Rho is partial correlation
+Rho_squared_error<- rep(0, N) 
+
+Ps <- rep(0, N) 
+Ns <- rep(0, N)
+
+false_positives<- rep(0, N)  
+false_negatives<- rep(0, N)  
+
+
+nu_Aindep <-rep(NA, N)
+nu_Aindep_grid_length <- 50
+nu_Aindep_grid_min <- 10
+nu_Aindep_grid_max <- 265
+nu_Aindep_grid <- seq(nu_Aindep_grid_min, nu_Aindep_grid_max, length.out = nu_Aindep_grid_length)
+
+Eta_Aindep <-rep(NA, N)
+BIC_Aindep <-rep(NA, N)
+Mu_Aindep <- array(0, dim = c(p, p, N))
+
+```
+
+## 3.2 running siGGM - A_Indep estimation
+
+```{R}
+time_Aindep.start <- Sys.time()
+for(j in 1:N){
+  
+  y <- X_repeats[,,j][1:n, ] 
+  
+   fit<-SCFCpath(y, SC, method="glasso",etaInd=1, nulist= nu_Aindep_grid, 
+                 siglam=10, sigmu=5, maxits=500, mu_init=0, 
+                 a0_init=30, b0_init=6, outerits = 100)
+  
+  
+  BIC_optimise <- rep(NA, nu_Aindep_grid_length)
+  
+  
+  for(b in 1:nu_Aindep_grid_length){
+    BIC_optimise[b] <- fit$BIC[[b]]
+  }
+  
+  ## Saving beta0
+  min_coord <- which(BIC_optimise == min(BIC_optimise, na.rm = TRUE), arr.ind = TRUE)
+  nu_Aindep[j] <- nu_Aindep_grid[min_coord]
+  Eta_Aindep[j] <- fit$Eta[[min_coord]]
+  BIC_Aindep[j] <- fit$BIC[[min_coord]]
+  
+  #Mu[j] <- fit$Mu[[min_coord]]
+  Mu_Aindep[,,j][upper.tri(Mu_Aindep[,,j])] <- fit$Mu[[min_coord]]
+  Mu_Aindep[,,j] <- Mu_Aindep[,,j] + t(Mu_Aindep[,,j])
+  
+  Rho_hat <- threshold(cov2cor(fit$Omega[[min_coord]]), edge.tol)
+  
+  Rho_squared_error[j] <- sum((Rho_hat - cov2cor(theta_true))^2)
+  Rho_hat_zeros <- Rho_hat[lower.tri(Rho_hat)]
+  
+  false_positives[j] <- sum((Rho_hat_zeros != 0) & (Rho_zeros == 0))  
+  false_negatives[j] <- sum((Rho_hat_zeros == 0) & (Rho_zeros != 0))
+  
+  Ps[j] <-  sum(Rho_hat_zeros != 0)
+  Ns[j] <-  sum(Rho_hat_zeros == 0)
+  
+  
+  cat("Higgins Aindep", "n", n , "Repeat", j, "done", "\n")     #cat: print output to the screen or to a file
+}
+time_Aindep.end <- Sys.time()
+```
+
+## 3.3 Summary
+
+```{R}
+time_Aindep <- time_Aindep.end - time_Aindep.start
+time_Aindep <- round(time_Aindep/N, 3)
+time_Aindep
+
+total_negatives <- sum(Rho_zeros ==0)
+total_positives <- sum(Rho_zeros !=0)
+
+MSE_Aindep <- round(mean(Rho_squared_error), 3)  
+FPR_Aindep  <- round(mean(false_positives/total_negatives), 3)         
+FNR_Aindep  <- round(mean(false_negatives/total_positives), 3)
+TCR_Aindep  <- round(sum((false_positives == 0) & (false_negatives == 0))/N, 3)  
+
+FDiscR_Aindep <- round(mean(false_positives / Ps, na.rm=TRUE), 3) 
+FNonDiscR_Aindep <- round(mean(false_negatives /Ns), 3)
+
+m_nu_Aindep  <-round(mean(nu_Aindep), 3)
+m_Mu_Aindep  <-round(mean(Mu_Aindep), 3)
+m_Eta_Aindep  <-round(mean(Eta_Aindep), 3)
+
+# Get the indices of A where A > 0 and A < 0
+diag(SC) <- 0## so we ignore the diagonal 
+positive_indices <- which(SC > 0, arr.ind = TRUE)
+negative_indices <- which(SC < 0, arr.ind = TRUE)
+
+# Calculate the mean of Mu for the indices where A > 0 and A < 0
+mean_Mu_Aindep_positive <- rep(NA, N)
+mean_Mu_Aindep_negative <- rep(NA, N)
+for(j in 1:N){
+  mean_Mu_Aindep_positive[j] <- mean(Mu_Aindep[cbind(positive_indices, j)])
+  mean_Mu_Aindep_negative[j] <- mean(Mu_Aindep[cbind(negative_indices, j)])
+}
+mean_Mu_Aindep_positive <- round(mean(mean_Mu_Aindep_positive), 3)
+mean_Mu_Aindep_negative <- round(mean(mean_Mu_Aindep_negative), 3)
+
+
+# Print the results
+cat("Mean of Mu for indices with A_jk > 0:", mean_Mu_Aindep_positive, "\n")
+cat("Mean of Mu for indices with A_jk < 0:", mean_Mu_Aindep_negative, "\n")
+
+## results
+FPR_Aindep
+TCR_Aindep
+FNonDiscR_Aindep
+
+
+MSE_Aindep
+FDiscR_Aindep 
+FNR_Aindep
+
+nu_Aindep
+m_nu_Aindep
+
+Mu_Aindep
+m_Mu_Aindep
+
+Eta_Aindep
+m_Eta_Aindep
+
+BIC_Aindep
+
+```
+
+
+# 4. siGGM - A_semidep
+
+## 4.1 Basic setting
+
+```{R}
+SC <- A_scaled_semi_dep
+diag(SC) <- 0
+
+## Summary statistics
+Rho_zeros <- cov2cor(theta_true)[lower.tri(cov2cor(theta_true))]   ## remember -Rho is partial correlation
+Rho_squared_error<- rep(0, N) 
+
+Ps <- rep(0, N) 
+Ns <- rep(0, N)
+
+false_positives<- rep(0, N)  
+false_negatives<- rep(0, N)  
+
+
+nu_Asemidep <-rep(NA, N)
+nu_Asemidep_grid_length <- 50
+nu_Asemidep_grid_min <- 10
+nu_Asemidep_grid_max <- 230
+nu_Asemidep_grid <- seq(nu_Asemidep_grid_min, nu_Asemidep_grid_max, length.out = nu_Asemidep_grid_length)
+
+Eta_Asemidep <-rep(NA, N)
+BIC_Asemidep <-rep(NA, N)
+Mu_Asemidep <- array(0, dim = c(p, p, N))
+
+```
+
+## 4.2 running siGGM - A_semidep estimation
+
+```{R}
+time_Asemidep.start <- Sys.time()
+for(j in 1:N){
+  
+  y <- X_repeats[,,j][1:n, ] 
+  
+  fit<-SCFCpath(y, SC, method="glasso",etaInd=1, nulist= nu_Asemidep_grid, 
+                siglam=10, sigmu=5, maxits=500, mu_init=0, 
+                a0_init=30, b0_init=6, outerits = 100)
+  
+  BIC_optimise <- rep(NA, nu_Asemidep_grid_length)
+  
+  for(b in 1:nu_Asemidep_grid_length){
+    BIC_optimise[b] <- fit$BIC[[b]]
+  }
+  
+  ## Saving beta0
+  min_coord <- which(BIC_optimise == min(BIC_optimise, na.rm = TRUE), arr.ind = TRUE)
+  nu_Asemidep[j] <- nu_Asemidep_grid[min_coord]
+  Eta_Asemidep[j] <- fit$Eta[[min_coord]]
+  BIC_Asemidep[j] <- fit$BIC[[min_coord]]
+  
+  #Mu[j] <- fit$Mu[[min_coord]]
+  Mu_Asemidep[,,j][upper.tri(Mu_Asemidep[,,j])] <- fit$Mu[[min_coord]]
+  Mu_Asemidep[,,j] <- Mu_Asemidep[,,j] + t(Mu_Asemidep[,,j])
+  
+  Rho_hat <- threshold(cov2cor(fit$Omega[[min_coord]]), edge.tol)
+  
+  Rho_squared_error[j] <- sum((Rho_hat - cov2cor(theta_true))^2)
+  Rho_hat_zeros <- Rho_hat[lower.tri(Rho_hat)]
+  
+  false_positives[j] <- sum((Rho_hat_zeros != 0) & (Rho_zeros == 0))  
+  false_negatives[j] <- sum((Rho_hat_zeros == 0) & (Rho_zeros != 0))
+  
+  Ps[j] <-  sum(Rho_hat_zeros != 0)
+  Ns[j] <-  sum(Rho_hat_zeros == 0)
+  
+  
+  cat("Higgins Asemidep", "n", n , "Repeat", j, "done", "\n")     #cat: print output to the screen or to a file
+}
+time_Asemidep.end <- Sys.time()
+
+```
+
+## 4.3 Summary
+
+```{R}
+# time
+time_Asemidep <- time_Asemidep.end - time_Asemidep.start
+time_Asemidep <- round(time_Asemidep/N, 3)
+time_Asemidep
+
+total_negatives <- sum(Rho_zeros ==0)
+total_positives <- sum(Rho_zeros !=0)
+
+MSE_Asemidep <- round(mean(Rho_squared_error), 3)  
+FPR_Asemidep  <- round(mean(false_positives/total_negatives), 3)         
+FNR_Asemidep  <- round(mean(false_negatives/total_positives), 3)
+TCR_Asemidep  <- round(sum((false_positives == 0) & (false_negatives == 0))/N, 3)  
+
+
+FDiscR_Asemidep <- round(mean(false_positives / Ps, na.rm=TRUE), 3) 
+FNonDiscR_Asemidep <- round(mean(false_negatives /Ns), 3)
+
+m_nu_Asemidep  <-round(mean(nu_Asemidep), 3)
+m_Mu_Asemidep  <-round(mean(Mu_Asemidep), 3)
+m_Eta_Asemidep  <-round(mean(Eta_Asemidep), 3)
+
+# Get the indices of A where A > 0 and A < 0
+diag(SC) <- 0
+positive_indices <- which(SC > 0, arr.ind = TRUE)
+negative_indices <- which(SC < 0, arr.ind = TRUE)
+
+# Calculate the mean of Mu for the indices where A > 0 and A < 0
+mean_Mu_Asemidep_positive <- rep(NA, N)
+mean_Mu_Asemidep_negative <- rep(NA, N)
+for(j in 1:N){
+  mean_Mu_Asemidep_positive[j] <- mean(Mu_Asemidep[cbind(positive_indices, j)])
+  mean_Mu_Asemidep_negative[j] <- mean(Mu_Asemidep[cbind(negative_indices, j)])
+}
+mean_Mu_Asemidep_positive <- round(mean(mean_Mu_Asemidep_positive), 3)
+mean_Mu_Asemidep_negative <- round(mean(mean_Mu_Asemidep_negative), 3)
+
+# Print the results
+cat("Mean of Mu for indices with A_jk > 0:", mean_Mu_Asemidep_positive, "\n")
+cat("Mean of Mu for indices with A_jk < 0:", mean_Mu_Asemidep_negative, "\n")
+
+## results
+FPR_Asemidep
+TCR_Asemidep
+FNonDiscR_Asemidep
+
+
+MSE_Asemidep
+FDiscR_Asemidep 
+FNR_Asemidep
+
+nu_Asemidep
+m_nu_Asemidep
+
+Mu_Asemidep
+m_Mu_Asemidep
+
+Eta_Asemidep
+m_Eta_Asemidep
+
+BIC_Asemidep
+
+length(which(nu_Asemidep==nu_Aindep_grid_max))
+length(which(nu_Asemidep==nu_Aindep_grid_max))
+```
+
+
+# 5. Network GLASSO - A_semidep85
+
+## 5.1 Basic setting
+
+```{R}
+SC <- A_scaled_semi_dep85
+diag(SC) <- 0
+
+## Summary statistics
+Rho_zeros <- cov2cor(theta_true)[lower.tri(cov2cor(theta_true))]   ## remember -Rho is partial correlation
+Rho_squared_error<- rep(0, N) 
+
+Ps <- rep(0, N) 
+Ns <- rep(0, N)
+
+false_positives<- rep(0, N)  
+false_negatives<- rep(0, N)  
+
+
+nu_Asemidep85 <-rep(NA, N)
+nu_Asemidep85_grid_length <- 50
+nu_Asemidep85_grid_min <- 10
+nu_Asemidep85_grid_max <- 230
+nu_Asemidep85_grid <- seq(nu_Asemidep85_grid_min, nu_Asemidep85_grid_max, length.out = nu_Asemidep85_grid_length)
+
+Eta_Asemidep85 <-rep(NA, N)
+BIC_Asemidep85 <-rep(NA, N)
+Mu_Asemidep85 <- array(0, dim = c(p, p, N))
+
+```
+
+## 5.2 running SiGGM - A_indep estimation
+
+```{R}
+time_Asemidep85.start <- Sys.time()
+for(j in 1:N){
+  
+  y <- X_repeats[,,j][1:n, ] 
+  
+  fit<-SCFCpath(y, SC, method="glasso",etaInd=1, nulist= nu_Asemidep85_grid, 
+                siglam=10, sigmu=5, maxits=500, mu_init=0, 
+                a0_init=30, b0_init=6, outerits = 100)
+  
+  BIC_optimise <- rep(NA, nu_Asemidep85_grid_length)
+  
+  for(b in 1:nu_Asemidep85_grid_length){
+    BIC_optimise[b] <- fit$BIC[[b]]
+  }
+  
+  ## Saving beta0
+  min_coord <- which(BIC_optimise == min(BIC_optimise, na.rm = TRUE), arr.ind = TRUE)
+  nu_Asemidep85[j] <- nu_Asemidep85_grid[min_coord]
+  Eta_Asemidep85[j] <- fit$Eta[[min_coord]]
+  BIC_Asemidep85[j] <- fit$BIC[[min_coord]]
+  
+  #Mu[j] <- fit$Mu[[min_coord]]
+  Mu_Asemidep85[,,j][upper.tri(Mu_Asemidep85[,,j])] <- fit$Mu[[min_coord]]
+  Mu_Asemidep85[,,j] <- Mu_Asemidep85[,,j] + t(Mu_Asemidep85[,,j])
+  
+  Rho_hat <- threshold(cov2cor(fit$Omega[[min_coord]]), edge.tol)
+  
+  Rho_squared_error[j] <- sum((Rho_hat - cov2cor(theta_true))^2)
+  Rho_hat_zeros <- Rho_hat[lower.tri(Rho_hat)]
+  
+  false_positives[j] <- sum((Rho_hat_zeros != 0) & (Rho_zeros == 0))  
+  false_negatives[j] <- sum((Rho_hat_zeros == 0) & (Rho_zeros != 0))
+  
+  Ps[j] <-  sum(Rho_hat_zeros != 0)
+  Ns[j] <-  sum(Rho_hat_zeros == 0)
+  
+  
+  cat("Higgins Asemidep85", "n", n , "Repeat", j, "done", "\n")     #cat: print output to the screen or to a file
+}
+time_Asemidep85.end <- Sys.time()
+```
+
+## 5.3 Summary
+
+```{R}
+# time
+time_Asemidep85 <- time_Asemidep85.end - time_Asemidep85.start
+time_Asemidep85 <- round(time_Asemidep85/N, 3)
+time_Asemidep85
+
+total_negatives <- sum(Rho_zeros ==0)
+total_positives <- sum(Rho_zeros !=0)
+
+MSE_Asemidep85 <- round(mean(Rho_squared_error), 3)  
+FPR_Asemidep85  <- round(mean(false_positives/total_negatives), 3)         
+FNR_Asemidep85  <- round(mean(false_negatives/total_positives), 3)
+TCR_Asemidep85  <- round(sum((false_positives == 0) & (false_negatives == 0))/N, 3)  
+
+
+FDiscR_Asemidep85 <- round(mean(false_positives / Ps, na.rm=TRUE), 3) 
+FNonDiscR_Asemidep85 <- round(mean(false_negatives /Ns), 3)
+
+m_nu_Asemidep85  <-round(mean(nu_Asemidep85), 3)
+m_Mu_Asemidep85  <-round(mean(Mu_Asemidep85), 3)
+m_Eta_Asemidep85  <-round(mean(Eta_Asemidep85), 3)
+
+
+# Get the indices of A where A > 0 and A < 0
+diag(SC) <- 0
+positive_indices <- which(SC > 0, arr.ind = TRUE)
+negative_indices <- which(SC < 0, arr.ind = TRUE)
+
+# Calculate the mean of Mu for the indices where A > 0 and A < 0
+mean_Mu_Asemidep85_positive <- rep(NA, N)
+mean_Mu_Asemidep85_negative <- rep(NA, N)
+for(j in 1:N){
+  mean_Mu_Asemidep85_positive[j] <- mean(Mu_Asemidep85[cbind(positive_indices, j)])
+  mean_Mu_Asemidep85_negative[j] <- mean(Mu_Asemidep85[cbind(negative_indices, j)])
+}
+mean_Mu_Asemidep85_positive <- round(mean(mean_Mu_Asemidep85_positive), 3)
+mean_Mu_Asemidep85_negative <- round(mean(mean_Mu_Asemidep85_negative), 3)
+
+# Print the results
+cat("Mean of Mu for indices with A_jk > 0:", mean_Mu_Asemidep85_positive, "\n")
+cat("Mean of Mu for indices with A_jk < 0:", mean_Mu_Asemidep85_negative, "\n")
+
+## results
+FPR_Asemidep85
+TCR_Asemidep85
+FNonDiscR_Asemidep85
+
+
+MSE_Asemidep85
+FDiscR_Asemidep85 
+FNR_Asemidep85
+
+nu_Asemidep85
+m_nu_Asemidep85
+
+Mu_Asemidep85
+m_Mu_Asemidep85
+
+Eta_Asemidep85
+m_Eta_Asemidep85
+
+BIC_Asemidep85
+
+length(which(nu_Asemidep85==nu_Asemidep85_grid_max))
+length(which(nu_Asemidep85==nu_Asemidep85_grid_min))
+
+```
+
+# 6. Code to produce the Latex table
+
+```{R}
+library(xtable)
+options(xtable.floating = FALSE)
+options(xtable.timestamp = "")
+
+
+table_frame_freq <- data.frame("Network" = c("Aindep", "Asemidep", "Asemidep85"), 
+                               "p" = c(p, p, p, p),
+                               "Sample Size" = c(n, n, n, n),
+                               "MSE" =  c(
+                                          MSE_Aindep,
+                                          MSE_Asemidep,
+                                          MSE_Asemidep85),
+                               "FPR" =  c( 
+                                          FPR_Aindep, 
+                                          FPR_Asemidep,
+                                          FPR_Asemidep85),
+                               "FNR" =  c(
+                                          FNR_Aindep, 
+                                          FNR_Asemidep, 
+                                          FNR_Asemidep85),
+                               "TCR" =  c( 
+                                          TCR_Aindep, 
+                                          TCR_Asemidep, 
+                                          TCR_Asemidep85),
+                               "FDiscR" = c( 
+                                            FDiscR_Aindep, 
+                                            FDiscR_Asemidep, 
+                                            FDiscR_Asemidep85),
+                               "FNonDiscR" = c(
+                                               FNonDiscR_Aindep, 
+                                               FNonDiscR_Asemidep,
+                                               FNonDiscR_Asemidep85),
+                               "hat{nu}" = c( 
+                                             m_nu_Aindep, 
+                                             m_nu_Asemidep, 
+                                             m_nu_Asemidep85), 
+                               "hat{Eta}" = c(
+                                              m_Eta_Aindep, 
+                                              m_Eta_Asemidep,
+                                              m_Eta_Asemidep85),
+                               "mean{Mu}" = c(
+                                             m_Mu_Aindep, 
+                                             m_Mu_Asemidep, 
+                                             m_Mu_Asemidep85), 
+                               "Mu_positive" = c(
+                                                      mean_Mu_Aindep_positive, 
+                                                      mean_Mu_Asemidep_positive, 
+                                                      mean_Mu_Asemidep85_positive), 
+                               "Mu_negative" = c( 
+                                                      mean_Mu_Aindep_negative, 
+                                                      mean_Mu_Asemidep_negative, 
+                                                      mean_Mu_Asemidep85_negative), 
+                               "time"  = c(
+                                           time_Aindep, 
+                                           time_Asemidep, 
+                                           time_Asemidep85),
+                               "touch max" = c(
+                                           length(which(nu_Aindep==nu_Aindep_grid_max)),
+                                           length(which(nu_Asemidep==nu_Aindep_grid_max)),
+                                           length(which(nu_Asemidep85==nu_Asemidep85_grid_max))
+                                           ),
+                               "touch min" = c(
+                                               length(which(nu_Aindep==nu_Aindep_grid_min)),
+                                               length(which(nu_Asemidep==nu_Aindep_grid_min)),
+                                               length(which(nu_Asemidep85==nu_Asemidep85_grid_min))
+                                               )
+                               )
+
+xtable(table_frame_freq, digits=3)
+
+```
+
+

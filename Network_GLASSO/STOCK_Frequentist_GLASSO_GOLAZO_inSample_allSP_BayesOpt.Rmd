@@ -1,0 +1,1665 @@
+---
+title: "STOCK Frequentist GLASSO and GOLAZO Insample Analysis"
+author: "Jack Jewson"
+date: "19/07/2022"
+output: html_document
+---
+
+Here I run GLASSO and GOLAZO for the Stock-market data using the Economic and Policy networks for the S\&P500 intersected data
+
+# Preliminaries {.tabset}
+
+## working directory
+
+```{r working_directory, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+data_dir <- '/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/STOCK_DATA'
+
+```
+
+## Packages
+
+```{r packages, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+library(readr)
+library(devtools)
+#install_github("pzwiernik/golazo", build_vignettes=TRUE)
+#library(golazo)
+#source('C:/Users/JeJewson/Documents/Barcelona_Yr1/LisCode/GOLAZO_function.R')
+source("/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/GOLAZO_function_pd_solve.R")
+library(polynom)
+library(ggplot2)
+
+library(graphics)
+library(xtable)
+library(knitr)
+
+library(rBayesianOptimization)
+
+library(mnormt)
+```
+
+## Functions 
+
+```{r functions, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+ebic_eval <- function(n, R, U, ebic.gamma, edge.tol, tol){
+  res <- golazo(R, L = -U, U = U, verbose = FALSE, tol = tol)
+  K <- res$K
+  KR <- stats::cov2cor(K)         #to make edge count independend of scalings
+  nedg <- length(which(abs(KR[upper.tri(abs(KR), diag = FALSE)]) > edge.tol))
+  ## p is the dimensions of R I think - this should be fine but isn't great code!
+  ebic <- -(n)*(log(det(K)) - sum(R*K)) + nedg * (log(n) + 4 * ebic.gamma * log(p))
+  return(ebic)   
+}
+
+ebic_eval_BayesOpt <- function(n, R, beta0, ebic.gamma, edge.tol, tol){
+  p <- nrow(R)
+  U <- matrix(exp(beta0), nrow = p, ncol = p) 
+  diag(U) <- 0
+  ebic <- ebic_eval(n, R, U, ebic.gamma, edge.tol, tol)
+  return(list("Score" = -ebic, "Pred" = 0))   
+}
+
+ebic_eval_network <- function(n, R, A, beta0, beta1, ebic.gamma, edge.tol, tol){
+  U <- exp(beta0 + beta1*A)           #### remember a = beta1, b= beta0
+  #U <- exp(beta0)*(1 - A) + exp(beta1)*A
+  diag(U) <- 0
+  return(ebic_eval(n, R, U, ebic.gamma, edge.tol, tol))
+}
+
+ebic_eval_network_BayesOpt <- function(n, R, A, beta0, beta1, ebic.gamma, edge.tol, tol){
+  U <- exp(beta0 + beta1*A)           #### remember a = beta1, b= beta0
+  #U <- exp(beta0)*(1 - A) + exp(beta1)*A
+  diag(U) <- 0
+  ebic <- ebic_eval(n, R, U, ebic.gamma, edge.tol, tol)
+  return(list("Score" = -ebic, "Pred" = 0))
+}
+
+ebic_eval_two_networks <- function(n, R, A1, A2, beta0, beta1, beta2, ebic.gamma, edge.tol, tol){
+   U <- exp(beta0 + beta1*A1 + beta2*A2)           #### remember a = beta1, b= beta0
+   diag(U) <- 0
+   return(ebic_eval(n, R, U, ebic.gamma, edge.tol, tol))
+}
+
+ebic_eval_two_networks_BayesOpt <- function(n, R, A1, A2, beta0, beta1, beta2, ebic.gamma, edge.tol, tol){
+   U <- exp(beta0 + beta1*A1 + beta2*A2)           #### remember a = beta1, b= beta0
+   diag(U) <- 0
+   try(ebic <- ebic_eval(n, R, U, ebic.gamma, edge.tol, tol))
+   return(list("Score" = -ebic, "Pred" = 0))
+}
+
+ebic_eval_three_networks_BayesOpt <- function(n, R, A1, A2, A3, beta0, beta1, beta2, beta3, ebic.gamma, edge.tol, tol){
+   U <- exp(beta0 + beta1*A1 + beta2*A2 + beta3*A3)  
+   diag(U) <- 0
+   try(ebic <- ebic_eval(n, R, U, ebic.gamma, edge.tol, tol))
+   return(list("Score" = -ebic, "Pred" = 0))
+}
+
+
+standardise_network_matrix_tri <- function(A) {
+  ## before we ignored the symmetry which matters (slightly) for the variance
+  p <- nrow(A)
+  
+  A_tri <- A[upper.tri(A)]
+  bar_A_tri <- mean(A_tri)
+  #S2_A_tri <- var(A_tri)
+  S2_A_tri <- 1/length(A_tri)*sum((A_tri - bar_A_tri)^2)
+  
+  return((A - bar_A_tri)/sqrt(S2_A_tri))
+}
+
+## Turning the correlation matrix given by the golazo function back to a covariance matrix, useful in out-of-sample-llh
+cor2cov <- function(Theta_cor, sigma2_vect){
+  # Theta_cor is correlation matrix, sqrt(sigma2_vect) is the standard deviations of each variable
+  p <- nrow(Theta_cor)
+  Theta_cov <- matrix(NA, nrow = p, ncol = p)
+  for(i in 1:p){
+    Theta_cov[, i] <- Theta_cor[,i]*sqrt(sigma2_vect[i])*sqrt(sigma2_vect)   
+  }
+  return(Theta_cov)
+}
+
+
+threshold <- function(Rho_mat, threshold){
+  return(Rho_mat*(abs(Rho_mat) >= threshold))
+}
+
+
+
+## No Network matrix
+beta0_max_GLASSO <- function(R){
+  return(log(max(abs(R - diag(diag(R))))))## check we can irgnore diags
+  #return(log(max(max(diag(R)^2) - abs(R)))) ## Piotr's updated bound!
+}
+
+
+
+```
+
+## Hyparameters
+
+
+```{r hyperparameters, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+ebic.gamma <- 0           # set to zero to get BIC
+edge.tol <-  1e-6         # be consistent with GLASSO+EBIC method
+
+```
+
+# Data Loading
+
+'_tran' is the transformed data
+'_SP' is the available stocks cross-referenced with the S\&P 500
+
+```{r data_load, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+setwd(data_dir)
+
+stock_trans <- as.matrix(read_csv('stock_trans_SP.csv'))[, -1]
+E_pears <- as.matrix(read_csv('E_pears_SP.csv'))[, -1]
+P_pears <- as.matrix(read_csv('P_pears_SP.csv'))[, -1]
+
+
+n <- nrow(stock_trans)
+p <- ncol(stock_trans)
+N <- 1
+
+```
+
+# GLASSO {.tabset}
+
+## Inference
+
+```{r GLASSO_run, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta0_GLASSO <-rep(NA, N)
+#beta0_grid_length <- 20
+#beta0_grid_min <- -3
+
+#beta0_grid_max <- -0.5
+#beta0_grid_min <- -2
+
+beta0_grid_max <- -0.5
+beta0_grid_min <- -3
+
+ebic_eval_optim_GLASSO <- rep(NA, N)
+
+time_GLASSO_freq.start <- Sys.time()
+for(j in 1:N){
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(stock_trans))  
+  
+  ## BayesOpt ##
+  beta_optimise <- BayesianOptimization(
+    FUN = function(beta0){ebic_eval_BayesOpt(n, R, beta0, ebic.gamma = ebic.gamma, edge.tol = edge.tol, tol = 1e-6)},
+    bounds = list(beta0 = c(beta0_grid_min, min(beta0_grid_max, beta0_max_GLASSO(R)))),
+    init_points = 5,
+    n_iter = 10, ## 7 evals vs 20/5
+    acq = "ucb", 
+    kernel = list(type = "exponential", power = 2),
+  )
+
+  
+  beta0_GLASSO[j] <- beta_optimise$Best_Par
+  # JACK: Saving the EBIC 
+  ebic_eval_optim_GLASSO[j] <- - beta_optimise$Best_Value
+  
+  #### Using the optimal beta0 ##
+  GraphicalModel <- golazo (R, L = exp(beta0_GLASSO[j]) * L, U =exp(beta0_GLASSO[j])* U, tol = 1e-6, verbose=FALSE)
+  
+  #Theta_hat_GLASSO <- round(GraphicalModel$K, round.tol)   
+  Rho_hat_GLASSO <- threshold(cov2cor(GraphicalModel$K), edge.tol)
+
+}
+time_GLASSO_freq.end <- Sys.time()
+
+```
+
+## Analysis
+
+```{r GLASSO_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+
+beta0_GLASSO # -3.690654  # -1.631706
+
+ebic_eval_optim_GLASSO
+
+sum(Rho_hat_GLASSO[lower.tri((Rho_hat_GLASSO))] != 0)
+sum(Rho_hat_GLASSO[lower.tri((Rho_hat_GLASSO))] == 0)
+
+
+##JACK: before doing out of sample I guess we need to turn this back into a covariance matrix 
+cov2cor(solve(Rho_hat_GLASSO))[1:3, 1:3]
+cov2cor(cov(stock_trans))[1:3, 1:3]
+
+time_GLASSO_freq1 <- time_GLASSO_freq.end - time_GLASSO_freq.start
+time_GLASSO_freq <- round(time_GLASSO_freq1/N, 3)
+time_GLASSO_freq
+
+
+```
+
+
+# Motivtaing Plots {.tabset}
+
+## Economic (A1)
+
+```{r Theta_vs_A1, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+A1 <- standardise_network_matrix_tri(E_pears)
+diag(A1) <- 0
+
+```
+
+## GLASSO vs A1
+
+```{r GLASSO_vs_A1_1, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+A1_plot <- A1[upper.tri(A1)]
+
+partial_corr_GLASSO <- - Rho_hat_GLASSO[upper.tri(Rho_hat_GLASSO)]
+
+#DAVID. USING LOESS INSTEAD OF LOWESS. IT FITS THE DATA BETTER
+plot(x = A1_plot, y = partial_corr_GLASSO, xlab = "Economic Risks Similarity Index", ylab ="Partial Correlation (GLASSO)")
+#l <- loess(partial_corr_GLASSO ~ A1_plot)
+#o <- order(l$x)
+#lines(l$x[o], l$fitted[o], col='red')
+
+```
+
+```{r GLASSO_vs_A1_1_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 3, fig.width = 5, dev = "tikz"}
+
+par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+A1_plot <- A1[upper.tri(A1)]
+
+partial_corr_GLASSO <- - Rho_hat_GLASSO[upper.tri(Rho_hat_GLASSO)]
+
+#plot(x = A1_plot, y = partial_corr_GLASSO, xlab = "Economic Index (Pearson's Correlation)", ylab ="Partial Correlation (GLASSO)")
+#l <- loess(partial_corr_GLASSO ~ A1_plot)
+#o <- order(l$x)
+#lines(l$x[o], l$fitted[o], col='red')
+
+## Thinning to 0's to allow late to plot
+set.seed(5)
+drop_ind <- sample(which(partial_corr_GLASSO == 0), length(partial_corr_GLASSO)/1.2, replace = FALSE)
+
+partial_corr_GLASSO_plot <- partial_corr_GLASSO[- drop_ind]
+A1_plot_plot <- A1_plot[- drop_ind]
+
+
+plot(x = A1_plot_plot, y = partial_corr_GLASSO_plot, xlab = "Economic Risks Similarity Index", ylab ="Partial Correlation (GLASSO)")
+
+
+
+
+```
+
+Motivated by the DoubleExponential Prior interpretation. The second plots provide some notion of uncertainty quantification for the binning. 
+
+```{r GLASSO_vs_A1_2, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## Binning the network - 
+library(dplyr)
+num_bins <- 10
+
+# Quantile bins - Equi-obs bins
+df_A1_plot <- data.frame(A1_plot)
+
+df_A1_plot <- df_A1_plot %>% mutate(A1_plot_bin = cut(A1_plot, 
+                                                      breaks = unique(quantile(A1_plot, probs=seq.int(0,1, by=1/num_bins))), 
+                                                      include.lowest=TRUE))
+df_A1_plot <- df_A1_plot %>% mutate(A1_plot_bin_cat = ntile(A1_plot, num_bins))
+df_A1_plot <- df_A1_plot %>% mutate(partial_corr_GLASSO = partial_corr_GLASSO)
+
+plot(aggregate(df_A1_plot$A1_plot, list(df_A1_plot$A1_plot_bin_cat), mean)$x, log(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin_cat), mean)$x), xlab = "A1 - bin mid-point", ylab = "log E[rho_ij | A1 binned]", main = "Quantile (Equi-obs) bins")
+# JACK: Adding the GOLAZO fitted regression line
+#lines(seq(-3, 3, length.out = 1000), log(2) - 2*(beta0_GLASSO[1]  + log(n)) - 2*seq(-3, 3, length.out = 1000)*beta0_GOLAZO_A1[2], lwd = 3, col = "red", lty = 2)
+#lines(seq(-3, 3, length.out = 1000), log(2) - 2*(beta_GOLAZO_A1_full[1]  + log(n)) - 2*seq(-3, 3, length.out = 1000)*beta_GOLAZO_A1_full[2], lwd = 3, col = "blue", lty = 2)
+#legend("bottomright", c("Fixing beta0 = beta0_GLASSO", "Joint optimisation of beta0 and beta1"), col = c("red", "blue"), lty = c(2, 2))
+### OKAY NOW WHEN WE GET BETA0 RIGHT NOW OUR RGERESSION LINES WORK 
+### DID WE GET THIS AT ALL IN BAYES
+
+df_plot <- data.frame(A1_bin_mean = aggregate(df_A1_plot$A1_plot, list(df_A1_plot$A1_plot_bin_cat), mean)$x, 
+                      Mean_r_ij2 = aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin_cat), mean)$x, 
+                      SE_r_ij2 = sqrt(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin_cat), var)$x)/sqrt(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin_cat), length)$x))
+
+plot1 <- ggplot(df_plot, aes(x=A1_bin_mean, y=log(Mean_r_ij2))) + 
+  geom_pointrange(aes(ymin = log(Mean_r_ij2 - SE_r_ij2), ymax = log(Mean_r_ij2 + SE_r_ij2)), position=position_dodge(0.05)) +
+  ggtitle("Quantile (Equi-obs) bins") + 
+  labs(y = "log E[rho_ij | A1 binned]", x = "A1 - bin mid-point")
+print(plot1)
+
+# Equi-width bins
+df_A1_plot <- data.frame(A1_plot)
+Equi_bins_breaks <- seq(min(A1_plot), max(A1_plot), length.out = num_bins + 1)
+A1_plot_bin_mid = (Equi_bins_breaks[1:num_bins] + Equi_bins_breaks[2:(num_bins + 1)])/2
+
+df_A1_plot <- df_A1_plot %>% mutate(A1_plot_bin = cut(A1_plot, 
+                                                      breaks = Equi_bins_breaks, 
+                                                      include.lowest=TRUE))
+df_A1_plot <- df_A1_plot %>% mutate(partial_corr_GLASSO = partial_corr_GLASSO)
+
+
+plot(A1_plot_bin_mid, log(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin), mean)$x), xlab = "A1 - bin mid-point", ylab = "log E[rho_ij | A1 binned]", main = "Equi-spaced bins")
+#lines(seq(-3, 3, length.out = 1000), log(2) - 2*(beta0_GLASSO[1]  + log(n)) - 2*seq(-3, 3, length.out = 1000)*beta0_GOLAZO_A1[2], lwd = 3, col = "red", lty = 2)
+#lines(seq(-3, 3, length.out = 1000), log(2) - 2*(beta_GOLAZO_A1_full[1]  + log(n)) - 2*seq(-3, 3, length.out = 1000)*beta_GOLAZO_A1_full[2], lwd = 3, col = "blue", lty = 2)
+#legend("bottomright", c("Fixing beta0 = beta0_GLASSO", "Joint optimisation of beta0 and beta1"), col = c("red", "blue"), lty = c(2, 2))
+
+
+df_plot <- data.frame(A1_bin_mean = A1_plot_bin_mid, 
+                      Mean_r_ij2 = aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin), mean)$x, 
+                      SE_r_ij2 = sqrt(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin), var)$x)/sqrt(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin), length)$x))
+
+
+plot1 <- ggplot(df_plot, aes(x=A1_bin_mean, y=log(Mean_r_ij2))) + 
+  geom_pointrange(aes(ymin = log(Mean_r_ij2 - SE_r_ij2), ymax = log(Mean_r_ij2 + SE_r_ij2)), position=position_dodge(0.05)) +
+  ggtitle("Equi-spaced bins") + 
+  labs(y = "log E[rho_ij | A1 binned]", x = "A1 - bin mid-point")
+print(plot1)
+
+```
+
+```{r GLASSO_vs_A1_2_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 3, fig.width = 5, dev = "tikz"}
+par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+
+# Equi-width bins
+df_A1_plot <- data.frame(A1_plot)
+Equi_bins_breaks <- seq(min(A1_plot), max(A1_plot), length.out = num_bins + 1)
+A1_plot_bin_mid = (Equi_bins_breaks[1:num_bins] + Equi_bins_breaks[2:(num_bins + 1)])/2
+
+df_A1_plot <- df_A1_plot %>% mutate(A1_plot_bin = cut(A1_plot, 
+                                                      breaks = Equi_bins_breaks, 
+                                                      include.lowest=TRUE))
+df_A1_plot <- df_A1_plot %>% mutate(partial_corr_GLASSO = partial_corr_GLASSO)
+
+
+plot(A1_plot_bin_mid, log(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin), mean)$x), xlab = "Economic Risks Similarity Index ($A_1$)", ylab = "$\\log \\hat{E}[\\rho_{ij}^2 | A_1]$", main = "")
+
+```
+
+## Policy (A2)
+
+```{r Theta_vs_A2, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+A2 <- standardise_network_matrix_tri(P_pears)
+diag(A2) <- 0
+
+
+```
+
+## GLASSO vs A2
+
+```{r GLASSO_vs_A2_1, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+A2_plot <- A2[upper.tri(A2)]
+
+partial_corr_GLASSO <- - Rho_hat_GLASSO[upper.tri(Rho_hat_GLASSO)]
+
+#DAVID. USING LOESS INSTEAD OF LOWESS. IT FITS THE DATA BETTER
+plot(x = A2_plot, y = partial_corr_GLASSO, xlab = "Policy Risks Similarity Index", ylab ="Partial Correlation (GLASSO)")
+#l <- loess(partial_corr_GLASSO ~ A2_plot)
+#o <- order(l$x)
+#lines(l$x[o], l$fitted[o], col='red')
+
+
+cor(as.vector(A1_plot), as.vector(A2_plot))
+```
+
+```{r GLASSO_vs_A2_1_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 3, fig.width = 5, dev = "tikz"}
+
+par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+A2_plot <- A2[upper.tri(A2)]
+
+partial_corr_GLASSO <- - Rho_hat_GLASSO[upper.tri(Rho_hat_GLASSO)]
+
+#plot(x = A2_plot, y = partial_corr_GLASSO, xlab = "Policy Index (Pearson's Correlation)", ylab ="Partial Correlation (GLASSO)")
+#l <- loess(partial_corr_GLASSO ~ A2_plot)
+#o <- order(l$x)
+#lines(l$x[o], l$fitted[o], col='red')
+
+## Thinning to 0's to allow late to plot
+set.seed(5)
+drop_ind <- sample(which(partial_corr_GLASSO == 0), length(partial_corr_GLASSO)/1.2, replace = FALSE)
+
+partial_corr_GLASSO_plot <- partial_corr_GLASSO[- drop_ind]
+A2_plot_plot <- A2_plot[- drop_ind]
+
+plot(x = A2_plot_plot, y = partial_corr_GLASSO_plot, xlab = "Policy Risks Similarity Index", ylab ="Partial Correlation (GLASSO)")
+
+```
+
+Motivated by the DoubleExponential Prior interpretation. The second plots provide some notion of uncertainty quantification for the binning. 
+
+```{r GLASSO_vs_A2_2, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## Binning the network - 
+library(dplyr)
+num_bins <- 10
+
+# Quantile bins - Equi-obs bins
+df_A2_plot <- data.frame(A2_plot)
+
+df_A2_plot <- df_A2_plot %>% mutate(A2_plot_bin = cut(A2_plot, 
+                                                      breaks = unique(quantile(A2_plot, probs=seq.int(0,1, by=1/num_bins))), 
+                                                      include.lowest=TRUE))
+df_A2_plot <- df_A2_plot %>% mutate(A2_plot_bin_cat = ntile(A2_plot, num_bins))
+df_A2_plot <- df_A2_plot %>% mutate(partial_corr_GLASSO = partial_corr_GLASSO)
+
+plot(aggregate(df_A2_plot$A2_plot, list(df_A2_plot$A2_plot_bin_cat), mean)$x, log(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin_cat), mean)$x), xlab = "A2 - bin mid-point", ylab = "log E[rho_ij^2 | A2 binned]", main = "Quantile (Equi-obs) bins")
+# JACK: Adding the GOLAZO fitted regression line
+#lines(seq(-3, 3, length.out = 1000), log(2) - 2*(beta0_GLASSO[1]  + log(n)) - 2*seq(-3, 3, length.out = 1000)*beta0_GOLAZO_A2[2], lwd = 3, col = "red", lty = 2)
+#lines(seq(-3, 3, length.out = 1000), log(2) - 2*(beta_GOLAZO_A2_full[1]  + log(n)) - 2*seq(-3, 3, length.out = 1000)*beta_GOLAZO_A2_full[2], lwd = 3, col = "blue", lty = 2)
+#legend("bottomright", c("Fixing beta0 = beta0_GLASSO", "Joint optimisation of beta0 and beta2"), col = c("red", "blue"), lty = c(2, 2))
+### OKAY NOW WHEN WE GET BETA0 RIGHT NOW OUR RGERESSION LINES WORK 
+### DID WE GET THIS AT ALL IN BAYES
+
+df_plot <- data.frame(A2_bin_mean = aggregate(df_A2_plot$A2_plot, list(df_A2_plot$A2_plot_bin_cat), mean)$x, 
+                      Mean_r_ij2 = aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin_cat), mean)$x, 
+                      SE_r_ij2 = sqrt(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin_cat), var)$x)/sqrt(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin_cat), length)$x))
+
+plot1 <- ggplot(df_plot, aes(x=A2_bin_mean, y=log(Mean_r_ij2))) + 
+  geom_pointrange(aes(ymin = log(Mean_r_ij2 - SE_r_ij2), ymax = log(Mean_r_ij2 + SE_r_ij2)), position=position_dodge(0.05)) +
+  ggtitle("Quantile (Equi-obs) bins") + 
+  labs(y = "log E[rho_ij^2 | A2 binned]", x = "A2 - bin mid-point")
+print(plot1)
+
+# Equi-width bins
+df_A2_plot <- data.frame(A2_plot)
+Equi_bins_breaks <- seq(min(A2_plot), max(A2_plot), length.out = num_bins + 1)
+A2_plot_bin_mid = (Equi_bins_breaks[1:num_bins] + Equi_bins_breaks[2:(num_bins + 1)])/2
+
+df_A2_plot <- df_A2_plot %>% mutate(A2_plot_bin = cut(A2_plot, 
+                                                      breaks = Equi_bins_breaks, 
+                                                      include.lowest=TRUE))
+df_A2_plot <- df_A2_plot %>% mutate(partial_corr_GLASSO = partial_corr_GLASSO)
+
+
+plot(A2_plot_bin_mid, log(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin), mean)$x), xlab = "A2 - bin mid-point", ylab = "log E[rho_ij^2 | A2 binned]", main = "Equi-spaced bins")
+#lines(seq(-3, 3, length.out = 1000), log(2) - 2*(beta0_GLASSO[1]  + log(n)) - 2*seq(-3, 3, length.out = 1000)*beta0_GOLAZO_A2[2], lwd = 3, col = "red", lty = 2)
+#lines(seq(-3, 3, length.out = 1000), log(2) - 2*(beta_GOLAZO_A2_full[1]  + log(n)) - 2*seq(-3, 3, length.out = 1000)*beta_GOLAZO_A2_full[2], lwd = 3, col = "blue", lty = 2)
+#legend("bottomright", c("Fixing beta0 = beta0_GLASSO", "Joint optimisation of beta0 and beta2"), col = c("red", "blue"), lty = c(2, 2))
+
+
+df_plot <- data.frame(A2_bin_mean = A2_plot_bin_mid, 
+                      Mean_r_ij2 = aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin), mean)$x, 
+                      SE_r_ij2 = sqrt(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin), var)$x)/sqrt(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin), length)$x))
+
+
+plot1 <- ggplot(df_plot, aes(x=A2_bin_mean, y=log(Mean_r_ij2))) + 
+  geom_pointrange(aes(ymin = log(Mean_r_ij2 - SE_r_ij2), ymax = log(Mean_r_ij2 + SE_r_ij2)), position=position_dodge(0.05)) +
+  ggtitle("Equi-spaced bins") + 
+  labs(y = "log E[rho_ij | A2 binned]", x = "A2 - bin mid-point")
+print(plot1)
+
+```
+
+```{r GLASSO_vs_A2_2_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 3, fig.width = 5, dev = "tikz"}
+par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+
+# Equi-width bins
+df_A2_plot <- data.frame(A2_plot)
+Equi_bins_breaks <- seq(min(A2_plot), max(A2_plot), length.out = num_bins + 1)
+A2_plot_bin_mid = (Equi_bins_breaks[1:num_bins] + Equi_bins_breaks[2:(num_bins + 1)])/2
+
+df_A2_plot <- df_A2_plot %>% mutate(A2_plot_bin = cut(A2_plot, 
+                                                      breaks = Equi_bins_breaks, 
+                                                      include.lowest=TRUE))
+df_A2_plot <- df_A2_plot %>% mutate(partial_corr_GLASSO = partial_corr_GLASSO)
+
+
+plot(A2_plot_bin_mid, log(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin), mean)$x), xlab = "Policy Risks Similarity Index ($A_2$)", ylab = "$\\log \\hat{E}[\\rho_{ij}^2 | A_2]$", main = "")
+
+```
+
+
+# GOLAZO - Economic (A1) {.tabset}
+
+## Inference
+
+```{r GOLAZO_A1, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE,  error = TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta_GOLAZO_A1_full <- matrix(NA, nrow = N, ncol = 2)
+
+#beta0_grid_length <- 20
+beta0_grid_max <- -0.25
+beta0_grid_min <- -2
+
+#beta1_grid_length <- 20
+beta1_grid_max <- -0.5
+beta1_grid_min <- -2
+
+
+
+ebic_eval_optim_GOLAZO_A1_full <- rep(NA, N)
+
+time_GOLAZO_A1_freq.start <- Sys.time()
+for(j in 1:N){
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(stock_trans))  
+  
+  ## To deal with Quadprog failing ##
+  beta_optimise <- NA
+  beta_optimise <- BayesianOptimization(
+      FUN = function(beta0, beta1){ebic_eval_network_BayesOpt(n, R, A1, beta0, beta1, ebic.gamma = ebic.gamma, edge.tol = edge.tol, tol = 1e-5)},
+      bounds = list(beta0 = c(beta0_grid_min, beta0_grid_max),
+                  beta1 = c(beta1_grid_min, beta1_grid_max)),
+      init_points = 5,
+      n_iter = 15, ## 15
+      acq = "ucb", 
+      kernel = list(type = "exponential", power = 2),
+  )
+
+  
+  beta_GOLAZO_A1_full[j,] <- beta_optimise$Best_Par
+  # JACK: Saving the EBIC 
+  ebic_eval_optim_GOLAZO_A1_full[j] <- - beta_optimise$Best_Value
+  
+  #### Using the optimal beta0 ##
+  # U <- exp(beta0 + beta1*A1) 
+  U <- exp(beta_GOLAZO_A1_full[j,1] + beta_GOLAZO_A1_full[j,2]*A1) 
+  
+  ###################################
+  # we are now ready to run GOLAZO and output the optimal K
+  diag(U) <- 0
+  
+  res <- golazo(R, -U, U, tol = 1e-5, verbose=FALSE)
+  #Theta_hat_GOLAZO_A1_full <- round(res$K, round.tol)  
+  Rho_hat_GOLAZO_A1_full <- threshold(cov2cor(res$K), edge.tol)
+
+}
+time_GOLAZO_A1_freq.end <- Sys.time()
+
+```
+
+## Analysis
+
+```{r GOLAZO_A1_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+
+beta_GOLAZO_A1_full
+
+ebic_eval_optim_GOLAZO_A1_full
+
+sum(Rho_hat_GOLAZO_A1_full[lower.tri((Rho_hat_GOLAZO_A1_full))] != 0) # 1813 # 596 #540 
+sum(Rho_hat_GOLAZO_A1_full[lower.tri((Rho_hat_GOLAZO_A1_full))] == 0) # 3038 # 4255 # 4311
+
+## ploting the EBIC in beta0 and beta1
+library(graphics)
+contour(beta0_grid, beta1_grid, beta_optimise, xlab = "beta0", ylab = "beta1")
+points(beta_GOLAZO_A1_full[1], beta_GOLAZO_A1_full[2], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+time_GOLAZO_A1_freq1 <- time_GOLAZO_A1_freq.end - time_GOLAZO_A1_freq.start
+time_GOLAZO_A1_freq <- round(time_GOLAZO_A1_freq1/N, 3)
+time_GOLAZO_A1_freq
+
+```
+
+
+
+# GOLAZO - Policy (A2) {.tabset}
+
+## Inference
+
+```{r GOLAZO_A2, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE, error = TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta_GOLAZO_A2_full <- matrix(NA, nrow = N, ncol = 2)
+
+#beta0_grid_length <- 20
+beta0_grid_max <- -0.25
+beta0_grid_min <- -2
+
+#beta2_grid_length <- 20
+beta2_grid_max <- 0.5
+beta2_grid_min <- -2
+
+
+
+ebic_eval_optim_GOLAZO_A2_full <- rep(NA, N)
+
+time_GOLAZO_A2_freq.start <- Sys.time()
+for(j in 1:N){
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(stock_trans))  
+  
+  beta_optimise <- BayesianOptimization(
+      FUN = function(beta0, beta2){ebic_eval_network_BayesOpt(n, R, A2, beta0, beta2, ebic.gamma = ebic.gamma, edge.tol = edge.tol, tol = 1e-5)},
+      bounds = list(beta0 = c(beta0_grid_min, beta0_grid_max),
+                  beta2 = c(beta2_grid_min, beta2_grid_max)),
+      init_points = 5,
+      n_iter = 15, ## 15
+      acq = "ucb", 
+      kernel = list(type = "exponential", power = 2),
+    )
+
+  
+  beta_GOLAZO_A2_full[j,] <- beta_optimise$Best_Par
+  # JACK: Saving the EBIC 
+  ebic_eval_optim_GOLAZO_A2_full[j] <- - beta_optimise$Best_Value
+  
+  #### Using the optimal beta0 ##
+  # U <- exp(beta0 + beta1*A2) 
+  U <- exp(beta_GOLAZO_A2_full[j,1] + beta_GOLAZO_A2_full[j,2]*A2) 
+  
+  ###################################
+  # we are now ready to run GOLAZO and output the optimal K
+  diag(U) <- 0
+  
+  res <- golazo(R, -U, U, tol = 1e-5, verbose=FALSE)
+  #Theta_hat_GOLAZO_A2_full <- round(res$K, round.tol)  
+  Rho_hat_GOLAZO_A2_full <- threshold(cov2cor(res$K), edge.tol)
+
+}
+time_GOLAZO_A2_freq.end <- Sys.time()
+
+```
+
+## Analysis
+
+```{r GOLAZO_A2_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+
+beta_GOLAZO_A2_full
+
+ebic_eval_optim_GOLAZO_A2_full
+
+sum(Rho_hat_GOLAZO_A2_full[lower.tri((Rho_hat_GOLAZO_A2_full))] != 0) # 1813 # 596 #540 
+sum(Rho_hat_GOLAZO_A2_full[lower.tri((Rho_hat_GOLAZO_A2_full))] == 0) # 3038 # 4255 # 4311
+
+## ploting the EBIC in beta0 and beta2
+contour(beta0_grid, beta2_grid, beta_optimise, xlab = "beta0", ylab = "beta2")
+points(beta_GOLAZO_A2_full[1], beta_GOLAZO_A2_full[2], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+### Plotting the fitted partial correlations against the network
+
+A2_plot <- A2[upper.tri(A2)]
+
+partial_corr_GOLAZO_A2_full  <- - Rho_hat_GOLAZO_A2_full[upper.tri(Rho_hat_GOLAZO_A2_full)]
+
+none_na_plot <- which(log(partial_corr_GOLAZO_A2_full^2)!=-Inf)
+
+plot(x = A2_plot[none_na_plot], y = log(partial_corr_GOLAZO_A2_full^2)[none_na_plot], xlab = "log(Facebook Connection)", ylab ="log(r^2)", main = "GOLAZO A2 estimated")
+l <- loess(log(partial_corr_GOLAZO_A2_full^2)[none_na_plot] ~ A2_plot[none_na_plot])
+o <- order(l$x)
+lines(l$x[o], l$fitted[o], col='red')
+
+time_GOLAZO_A2_freq1 <- time_GOLAZO_A2_freq.end - time_GOLAZO_A2_freq.start
+time_GOLAZO_A2_freq <- round(time_GOLAZO_A2_freq1/N, 3)
+time_GOLAZO_A2_freq
+
+```
+
+
+
+# GOLAZO - Economic & Policy (A1 & A2) {.tabset}
+
+## Inference
+
+```{r GOLAZO_A1A2, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE,  error = TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta_GOLAZO_A1A2_full <- matrix(NA, nrow = N, ncol = 3)
+
+#beta0_grid_length <- 20
+beta0_grid_max <- 1.5
+beta0_grid_min <- -0.5
+
+#beta1_grid_length <- 20
+beta1_grid_max <- 0.5
+beta1_grid_min <- -1.5
+
+#beta2_grid_length <- 20
+beta2_grid_max <- 0
+beta2_grid_min <- -1.75
+
+ebic_eval_optim_GOLAZO_A1A2_full <- rep(NA, N)
+
+time_GOLAZO_A1A2_freq.start <- Sys.time()
+for(j in 1:N){
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(stock_trans))  
+  
+  beta_optimise <- BayesianOptimization(
+      FUN = function(beta0, beta1, beta2){ebic_eval_two_networks_BayesOpt(n, R, A1, A2, beta0, beta1, beta2, ebic.gamma = ebic.gamma, edge.tol = edge.tol, tol = 1e-5)},
+      bounds = list(beta0 = c(beta0_grid_min, beta0_grid_max),
+                  beta1 = c(beta1_grid_min, beta1_grid_max),
+                  beta2 = c(beta2_grid_min, beta2_grid_max)),
+      init_points = 5,
+      n_iter = 20, ## 20
+      acq = "ucb", 
+      kernel = list(type = "exponential", power = 2),
+    )
+
+  
+  beta_GOLAZO_A1A2_full[j,] <- beta_optimise$Best_Par
+  # JACK: Saving the EBIC 
+  ebic_eval_optim_GOLAZO_A1A2_full[j] <- - beta_optimise$Best_Value
+  
+  #### Using the optimal beta0 ##
+  # U <- exp(beta0 + beta1*A1 + beta2*A2) 
+  U <- exp(beta_GOLAZO_A1A2_full[j,1] + beta_GOLAZO_A1A2_full[j,2]*A1 + beta_GOLAZO_A1A2_full[j,3]*A2) 
+  
+  ###################################
+  # we are now ready to run GOLAZO and output the optimal K
+  diag(U) <- 0
+  
+  res <- golazo(R, -U, U, tol = 1e-5, verbose=FALSE)
+  #Theta_hat_GOLAZO_A1A2_full <- round(res$K, round.tol)  
+  Rho_hat_GOLAZO_A1A2_full <- threshold(cov2cor(res$K), edge.tol)
+
+}
+time_GOLAZO_A1A2_freq.end <- Sys.time()
+
+
+```
+
+## Analysis
+
+```{r GOLAZO_A1A2_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+
+beta_GOLAZO_A1A2_full
+
+ebic_eval_optim_GOLAZO_A1A2_full
+
+sum(Rho_hat_GOLAZO_A1A2_full[lower.tri((Rho_hat_GOLAZO_A1A2_full))] != 0)
+sum(Rho_hat_GOLAZO_A1A2_full[lower.tri((Rho_hat_GOLAZO_A1A2_full))] == 0)
+
+## becuase i repeated 0 by accident
+beta_optimise_plot <- beta_optimise
+
+## ploting the EBIC in Bivariate Marginals - need to marginalise
+contour(beta1_grid, beta2_grid, apply(beta_optimise_plot, MARGIN = c(2, 3), FUN = function(x){mean(x, na.rm = TRUE)}), xlab = "beta1", ylab = "beta2")
+points(beta_GOLAZO_A1A2_full[2], beta_GOLAZO_A1A2_full[3], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+contour(beta0_grid, beta1_grid, apply(beta_optimise_plot, MARGIN = c(1, 2), FUN = function(x){mean(x, na.rm = TRUE)}), xlab = "beta0", ylab = "beta1")
+points(beta_GOLAZO_A1A2_full[1], beta_GOLAZO_A1A2_full[2], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+contour(beta0_grid, beta2_grid, apply(beta_optimise_plot, MARGIN = c(1, 3), FUN = function(x){mean(x, na.rm = TRUE)}), xlab = "beta0", ylab = "beta2")
+points(beta_GOLAZO_A1A2_full[1], beta_GOLAZO_A1A2_full[3], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+## fixing the missing at it's optimum
+## ploting the EBIC in Bivariate Marginals - need to marginalise
+contour(beta1_grid, beta2_grid, beta_optimise_plot[min_coord[1],,], xlab = "beta1", ylab = "beta2", main = "beta0 = hat_beta0")
+points(beta_GOLAZO_A1A2_full[2], beta_GOLAZO_A1A2_full[3], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+contour(beta0_grid, beta1_grid, beta_optimise_plot[,,min_coord[3]], xlab = "beta0", ylab = "beta1", main = "beta2 = hat_beta2")
+points(beta_GOLAZO_A1A2_full[1], beta_GOLAZO_A1A2_full[2], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+contour(beta0_grid, beta2_grid, beta_optimise_plot[,min_coord[2],], xlab = "beta0", ylab = "beta2", main = "beta1 = hat_beta1")
+points(beta_GOLAZO_A1A2_full[1], beta_GOLAZO_A1A2_full[3], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+## Close to the minimum 
+
+n_close <- 10
+beta_close <- matrix(NA, nrow = n_close, ncol = 3)
+for(k in 1:n_close){
+  min_close_coord <- which(beta_optimise == (sort(beta_optimise)[k]), arr.ind = TRUE)
+  
+  beta_close[k, 1] <- beta0_grid[min_close_coord[1]]
+  beta_close[k, 2] <- beta1_grid[min_close_coord[2]]
+  beta_close[k, 3] <- beta2_grid[min_close_coord[3]]
+}
+
+beta_close
+sort(beta_optimise)[1:n_close]
+
+time_GOLAZO_A1A2_freq1 <- time_GOLAZO_A1A2_freq.end - time_GOLAZO_A1A2_freq.start
+time_GOLAZO_A1A2_freq <- round(time_GOLAZO_A1A2_freq1/N, 3)
+time_GOLAZO_A1A2_freq
+
+```
+
+# Full Comparison {.tabset}
+
+```{r full_comparison, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+
+ebic_eval_optim_GLASSO
+ebic_eval_optim_GOLAZO_A1_full
+ebic_eval_optim_GOLAZO_A2_full
+ebic_eval_optim_GOLAZO_A1A2_full
+
+beta0_GLASSO
+beta_GOLAZO_A1_full
+beta_GOLAZO_A2_full
+beta_GOLAZO_A1A2_full
+
+
+## BIC adjusted
+ebic_eval_optim_GLASSO
+ebic_eval_optim_GOLAZO_A1_full + (log(n) + 4 * ebic.gamma * log(p))
+ebic_eval_optim_GOLAZO_A2_full + (log(n) + 4 * ebic.gamma * log(p))
+ebic_eval_optim_GOLAZO_A1A2_full + 2*(log(n) + 4 * ebic.gamma * log(p))
+
+options(xtable.floating = FALSE)
+options(xtable.timestamp = "")
+
+## Frequentist
+table_frame_freq <- data.frame("Method" = c("GLASSO", "GOLAZO - A1", "GOLAZO - A2", "GOLAZO - A1 & A2"), 
+                               "EBIC" = c(ebic_eval_optim_GLASSO, 
+                                          ebic_eval_optim_GOLAZO_A1_full + (log(n) + 4 * ebic.gamma * log(p)),
+                                          ebic_eval_optim_GOLAZO_A2_full + (log(n) + 4 * ebic.gamma * log(p)),
+                                          ebic_eval_optim_GOLAZO_A1A2_full + 2*(log(n) + 4 * ebic.gamma * log(p))),
+                               "hat{beta}_0" = c(beta0_GLASSO, 
+                                                 beta_GOLAZO_A1_full[,1],
+                                                 beta_GOLAZO_A2_full[,1],
+                                                 beta_GOLAZO_A1A2_full[,1]),
+                               "hat{beta}_1" = c(NA, 
+                                                 beta_GOLAZO_A1_full[,2],
+                                                 NA, 
+                                                 beta_GOLAZO_A1A2_full[,2]), 
+                               "hat{beta}_2" = c(NA, 
+                                                 NA, 
+                                                 beta_GOLAZO_A2_full[,2], 
+                                                 beta_GOLAZO_A1A2_full[,3]),
+                               "Edges" = c(
+                            sum(Rho_hat_GLASSO[lower.tri((Rho_hat_GLASSO))] != 0),     
+                            sum(Rho_hat_GOLAZO_A1_full[lower.tri((Rho_hat_GOLAZO_A1_full))] != 0),   
+                            sum(Rho_hat_GOLAZO_A2_full[lower.tri((Rho_hat_GOLAZO_A2_full))] != 0),     
+                            sum(Rho_hat_GOLAZO_A1A2_full[lower.tri((Rho_hat_GOLAZO_A1A2_full))] != 0)),
+                               "Non-Edges" = c(
+                            sum(Rho_hat_GLASSO[lower.tri((Rho_hat_GLASSO))] == 0),     
+                            sum(Rho_hat_GOLAZO_A1_full[lower.tri((Rho_hat_GOLAZO_A1_full))] == 0),    
+                            sum(Rho_hat_GOLAZO_A2_full[lower.tri((Rho_hat_GOLAZO_A2_full))] == 0),     
+                            sum(Rho_hat_GOLAZO_A1A2_full[lower.tri((Rho_hat_GOLAZO_A1A2_full))] == 0))
+                              )
+xtable(table_frame_freq, digits=3)
+
+kable(table_frame_freq)
+
+```
+
+
+# EBIC.GAMMA = 0.5
+
+## Hyparameters
+
+
+```{r hyperparameters0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE,  error = TRUE}
+
+ebic.gamma <- 0.5           # set to zero to get BIC
+edge.tol <-  1e-6         # be consistent with GLASSO+EBIC method
+
+```
+
+# GLASSO {.tabset}
+
+## Inference
+
+```{r GLASSO_run_0.5, include=TRUE,echo=TRUE, eval=TRUE, cache=TRUE, error = TRUE,  error = TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta0_GLASSO <-rep(NA, N)
+#beta0_grid_length <- 20
+#beta0_grid_min <- -3
+
+#beta0_grid_max <- -0.5
+#beta0_grid_min <- -2
+
+beta0_grid_max <- 2
+beta0_grid_min <- -1
+
+ebic_eval_optim_GLASSO <- rep(NA, N)
+
+time_GLASSO_freq.start <- Sys.time()
+for(j in 1:N){
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(stock_trans))  
+  
+  ## BayesOpt ##
+  beta_optimise <- BayesianOptimization(
+    FUN = function(beta0){ebic_eval_BayesOpt(n, R, beta0, ebic.gamma = ebic.gamma, edge.tol = edge.tol, tol = 1e-6)},
+    bounds = list(beta0 = c(beta0_grid_min, min(beta0_grid_max, beta0_max_GLASSO(R)))),
+    init_points = 5,
+    n_iter = 10, ## 7 evals vs 20/5
+    acq = "ucb", 
+    kernel = list(type = "exponential", power = 2),
+  )
+
+  
+  beta0_GLASSO[j] <- beta_optimise$Best_Par
+  # JACK: Saving the EBIC 
+  ebic_eval_optim_GLASSO[j] <- - beta_optimise$Best_Value
+  
+  #### Using the optimal beta0 ##
+  GraphicalModel <- golazo (R, L = exp(beta0_GLASSO[j]) * L, U =exp(beta0_GLASSO[j])* U, tol = 1e-6, verbose=FALSE)
+  
+  #Theta_hat_GLASSO <- round(GraphicalModel$K, round.tol)   
+  Rho_hat_GLASSO <- threshold(cov2cor(GraphicalModel$K), edge.tol)
+
+}
+time_GLASSO_freq.end <- Sys.time()
+
+```
+
+## Analysis
+
+```{r GLASSO_diag_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+
+beta0_GLASSO # -3.690654  # -1.631706
+
+ebic_eval_optim_GLASSO
+
+sum(Rho_hat_GLASSO[lower.tri((Rho_hat_GLASSO))] != 0)
+sum(Rho_hat_GLASSO[lower.tri((Rho_hat_GLASSO))] == 0)
+
+
+##JACK: before doing out of sample I guess we need to turn this back into a covariance matrix 
+cov2cor(solve(Rho_hat_GLASSO))[1:3, 1:3]
+cov2cor(cov(stock_trans))[1:3, 1:3]
+
+time_GLASSO_freq1 <- time_GLASSO_freq.end - time_GLASSO_freq.start
+time_GLASSO_freq <- round(time_GLASSO_freq1/N, 3)
+time_GLASSO_freq
+
+
+```
+
+# Motivtaing Plots {.tabset}
+
+## Economic (A1)
+
+```{r Theta_vs_A1_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+A1 <- standardise_network_matrix_tri(E_pears)
+diag(A1) <- 0
+
+```
+
+## GLASSO vs A1
+
+```{r GLASSO_vs_A1_1_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+A1_plot <- A1[upper.tri(A1)]
+
+partial_corr_GLASSO <- - Rho_hat_GLASSO[upper.tri(Rho_hat_GLASSO)]
+
+#DAVID. USING LOESS INSTEAD OF LOWESS. IT FITS THE DATA BETTER
+plot(x = A1_plot, y = partial_corr_GLASSO, xlab = "Economic Index (Pearson's Correlation)", ylab ="Partial Correlation (GLASSO)")
+#l <- loess(partial_corr_GLASSO ~ A1_plot)
+#o <- order(l$x)
+#lines(l$x[o], l$fitted[o], col='red')
+
+```
+
+```{r GLASSO_vs_A1_1_0.5_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 3, fig.width = 5, dev = "tikz"}
+
+par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+A1_plot <- A1[upper.tri(A1)]
+
+partial_corr_GLASSO <- - Rho_hat_GLASSO[upper.tri(Rho_hat_GLASSO)]
+
+#plot(x = A1_plot, y = partial_corr_GLASSO, xlab = "Economic Index (Pearson's Correlation)", ylab ="Partial Correlation (GLASSO)")
+#l <- loess(partial_corr_GLASSO ~ A1_plot)
+#o <- order(l$x)
+#lines(l$x[o], l$fitted[o], col='red')
+
+## Thinning to 0's to allow late to plot
+set.seed(5)
+drop_ind <- sample(which(partial_corr_GLASSO == 0), length(partial_corr_GLASSO)/1.2, replace = FALSE)
+
+partial_corr_GLASSO_plot <- partial_corr_GLASSO[- drop_ind]
+A1_plot_plot <- A1_plot[- drop_ind]
+
+plot(x = A1_plot_plot, y = partial_corr_GLASSO_plot, xlab = "Economic Index (Pearson's Correlation)", ylab = "Partial Correlation (GLASSO)")
+
+
+```
+
+Motivated by the DoubleExponential Prior interpretation. The second plots provide some notion of uncertainty quantification for the binning. 
+
+```{r GLASSO_vs_A1_2_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## Binning the network - 
+library(dplyr)
+num_bins <- 10
+
+# Quantile bins - Equi-obs bins
+df_A1_plot <- data.frame(A1_plot)
+
+df_A1_plot <- df_A1_plot %>% mutate(A1_plot_bin = cut(A1_plot, 
+                                                      breaks = unique(quantile(A1_plot, probs=seq.int(0,1, by=1/num_bins))), 
+                                                      include.lowest=TRUE))
+df_A1_plot <- df_A1_plot %>% mutate(A1_plot_bin_cat = ntile(A1_plot, num_bins))
+df_A1_plot <- df_A1_plot %>% mutate(partial_corr_GLASSO = partial_corr_GLASSO)
+
+plot(aggregate(df_A1_plot$A1_plot, list(df_A1_plot$A1_plot_bin_cat), mean)$x, log(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin_cat), mean)$x), xlab = "A1 - bin mid-point", ylab = "log E[rho_ij | A1 binned]", main = "Quantile (Equi-obs) bins")
+# JACK: Adding the GOLAZO fitted regression line
+#lines(seq(-3, 3, length.out = 1000), log(2) - 2*(beta0_GLASSO[1]  + log(n)) - 2*seq(-3, 3, length.out = 1000)*beta0_GOLAZO_A1[2], lwd = 3, col = "red", lty = 2)
+#lines(seq(-3, 3, length.out = 1000), log(2) - 2*(beta_GOLAZO_A1_full[1]  + log(n)) - 2*seq(-3, 3, length.out = 1000)*beta_GOLAZO_A1_full[2], lwd = 3, col = "blue", lty = 2)
+#legend("bottomright", c("Fixing beta0 = beta0_GLASSO", "Joint optimisation of beta0 and beta1"), col = c("red", "blue"), lty = c(2, 2))
+### OKAY NOW WHEN WE GET BETA0 RIGHT NOW OUR RGERESSION LINES WORK 
+### DID WE GET THIS AT ALL IN BAYES
+
+df_plot <- data.frame(A1_bin_mean = aggregate(df_A1_plot$A1_plot, list(df_A1_plot$A1_plot_bin_cat), mean)$x, 
+                      Mean_r_ij2 = aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin_cat), mean)$x, 
+                      SE_r_ij2 = sqrt(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin_cat), var)$x)/sqrt(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin_cat), length)$x))
+
+plot1 <- ggplot(df_plot, aes(x=A1_bin_mean, y=log(Mean_r_ij2))) + 
+  geom_pointrange(aes(ymin = log(Mean_r_ij2 - SE_r_ij2), ymax = log(Mean_r_ij2 + SE_r_ij2)), position=position_dodge(0.05)) +
+  ggtitle("Quantile (Equi-obs) bins") + 
+  labs(y = "log E[rho_ij | A1 binned]", x = "A1 - bin mid-point")
+print(plot1)
+
+# Equi-width bins
+df_A1_plot <- data.frame(A1_plot)
+Equi_bins_breaks <- seq(min(A1_plot), max(A1_plot), length.out = num_bins + 1)
+A1_plot_bin_mid = (Equi_bins_breaks[1:num_bins] + Equi_bins_breaks[2:(num_bins + 1)])/2
+
+df_A1_plot <- df_A1_plot %>% mutate(A1_plot_bin = cut(A1_plot, 
+                                                      breaks = Equi_bins_breaks, 
+                                                      include.lowest=TRUE))
+df_A1_plot <- df_A1_plot %>% mutate(partial_corr_GLASSO = partial_corr_GLASSO)
+
+
+plot(A1_plot_bin_mid, log(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin), mean)$x), xlab = "A1 - bin mid-point", ylab = "log E[rho_ij | A1 binned]", main = "Equi-spaced bins")
+#lines(seq(-3, 3, length.out = 1000), log(2) - 2*(beta0_GLASSO[1]  + log(n)) - 2*seq(-3, 3, length.out = 1000)*beta0_GOLAZO_A1[2], lwd = 3, col = "red", lty = 2)
+#lines(seq(-3, 3, length.out = 1000), log(2) - 2*(beta_GOLAZO_A1_full[1]  + log(n)) - 2*seq(-3, 3, length.out = 1000)*beta_GOLAZO_A1_full[2], lwd = 3, col = "blue", lty = 2)
+#legend("bottomright", c("Fixing beta0 = beta0_GLASSO", "Joint optimisation of beta0 and beta1"), col = c("red", "blue"), lty = c(2, 2))
+
+
+df_plot <- data.frame(A1_bin_mean = A1_plot_bin_mid, 
+                      Mean_r_ij2 = aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin), mean)$x, 
+                      SE_r_ij2 = sqrt(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin), var)$x)/sqrt(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin), length)$x))
+
+
+plot1 <- ggplot(df_plot, aes(x=A1_bin_mean, y=log(Mean_r_ij2))) + 
+  geom_pointrange(aes(ymin = log(Mean_r_ij2 - SE_r_ij2), ymax = log(Mean_r_ij2 + SE_r_ij2)), position=position_dodge(0.05)) +
+  ggtitle("Equi-spaced bins") + 
+  labs(y = "log E[rho_ij | A1 binned]", x = "A1 - bin mid-point")
+print(plot1)
+
+```
+
+```{r GLASSO_vs_A1_2_0.5_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 3, fig.width = 5, dev = "tikz"}
+par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+
+# Equi-width bins
+df_A1_plot <- data.frame(A1_plot)
+Equi_bins_breaks <- seq(min(A1_plot), max(A1_plot), length.out = num_bins + 1)
+A1_plot_bin_mid = (Equi_bins_breaks[1:num_bins] + Equi_bins_breaks[2:(num_bins + 1)])/2
+
+df_A1_plot <- df_A1_plot %>% mutate(A1_plot_bin = cut(A1_plot, 
+                                                      breaks = Equi_bins_breaks, 
+                                                      include.lowest=TRUE))
+df_A1_plot <- df_A1_plot %>% mutate(partial_corr_GLASSO = partial_corr_GLASSO)
+
+
+plot(A1_plot_bin_mid, log(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1_plot$A1_plot_bin), mean)$x), xlab = "Economic Index ($A_1$)", ylab = "$\\log \\hat{E}[\\rho_{ij}^2 | A_1]$", main = "")
+
+```
+
+## Policy (A2)
+
+```{r Theta_vs_A2_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+A2 <- standardise_network_matrix_tri(P_pears)
+diag(A2) <- 0
+
+cor(as.vector(A1), as.vector(A2))
+```
+
+## GLASSO vs A2
+
+```{r GLASSO_vs_A2_1_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+A2_plot <- A2[upper.tri(A2)]
+
+partial_corr_GLASSO <- - Rho_hat_GLASSO[upper.tri(Rho_hat_GLASSO)]
+
+#DAVID. USING LOESS INSTEAD OF LOWESS. IT FITS THE DATA BETTER
+plot(x = A2_plot, y = partial_corr_GLASSO, xlab = "Policy Risks Similarity Index", ylab ="Partial Correlation (GLASSO)")
+#l <- loess(partial_corr_GLASSO ~ A2_plot)
+#o <- order(l$x)
+#lines(l$x[o], l$fitted[o], col='red')
+
+```
+
+```{r GLASSO_vs_A2_1_tikz_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 3, fig.width = 5, dev = "tikz"}
+
+par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+A2_plot <- A2[upper.tri(A2)]
+
+partial_corr_GLASSO <- - Rho_hat_GLASSO[upper.tri(Rho_hat_GLASSO)]
+
+#plot(x = A2_plot, y = partial_corr_GLASSO, xlab = "Policy Index (Pearson's Correlation)", ylab ="Partial Correlation (GLASSO)")
+#l <- loess(partial_corr_GLASSO ~ A2_plot)
+#o <- order(l$x)
+#lines(l$x[o], l$fitted[o], col='red')
+
+## Thinning to 0's to allow late to plot
+set.seed(5)
+drop_ind <- sample(which(partial_corr_GLASSO == 0), length(partial_corr_GLASSO)/1.2, replace = FALSE)
+
+partial_corr_GLASSO_plot <- partial_corr_GLASSO[- drop_ind]
+A2_plot_plot <- A2_plot[- drop_ind]
+
+plot(x = A2_plot_plot, y = partial_corr_GLASSO_plot, xlab = "Policy Risks Similarity Index", ylab ="Partial Correlation (GLASSO)")
+
+
+```
+
+Motivated by the DoubleExponential Prior interpretation. The second plots provide some notion of uncertainty quantification for the binning. 
+
+```{r GLASSO_vs_A2_2_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## Binning the network - 
+library(dplyr)
+num_bins <- 10
+
+# Quantile bins - Equi-obs bins
+df_A2_plot <- data.frame(A2_plot)
+
+df_A2_plot <- df_A2_plot %>% mutate(A2_plot_bin = cut(A2_plot, 
+                                                      breaks = unique(quantile(A2_plot, probs=seq.int(0,1, by=1/num_bins))), 
+                                                      include.lowest=TRUE))
+df_A2_plot <- df_A2_plot %>% mutate(A2_plot_bin_cat = ntile(A2_plot, num_bins))
+df_A2_plot <- df_A2_plot %>% mutate(partial_corr_GLASSO = partial_corr_GLASSO)
+
+plot(aggregate(df_A2_plot$A2_plot, list(df_A2_plot$A2_plot_bin_cat), mean)$x, log(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin_cat), mean)$x), xlab = "A2 - bin mid-point", ylab = "log E[rho_ij | A2 binned]", main = "Quantile (Equi-obs) bins")
+# JACK: Adding the GOLAZO fitted regression line
+#lines(seq(-3, 3, length.out = 1000), log(2) - 2*(beta0_GLASSO[1]  + log(n)) - 2*seq(-3, 3, length.out = 1000)*beta0_GOLAZO_A2[2], lwd = 3, col = "red", lty = 2)
+#lines(seq(-3, 3, length.out = 1000), log(2) - 2*(beta_GOLAZO_A2_full[1]  + log(n)) - 2*seq(-3, 3, length.out = 1000)*beta_GOLAZO_A2_full[2], lwd = 3, col = "blue", lty = 2)
+#legend("bottomright", c("Fixing beta0 = beta0_GLASSO", "Joint optimisation of beta0 and beta2"), col = c("red", "blue"), lty = c(2, 2))
+### OKAY NOW WHEN WE GET BETA0 RIGHT NOW OUR RGERESSION LINES WORK 
+### DID WE GET THIS AT ALL IN BAYES
+
+df_plot <- data.frame(A2_bin_mean = aggregate(df_A2_plot$A2_plot, list(df_A2_plot$A2_plot_bin_cat), mean)$x, 
+                      Mean_r_ij2 = aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin_cat), mean)$x, 
+                      SE_r_ij2 = sqrt(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin_cat), var)$x)/sqrt(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin_cat), length)$x))
+
+plot1 <- ggplot(df_plot, aes(x=A2_bin_mean, y=log(Mean_r_ij2))) + 
+  geom_pointrange(aes(ymin = log(Mean_r_ij2 - SE_r_ij2), ymax = log(Mean_r_ij2 + SE_r_ij2)), position=position_dodge(0.05)) +
+  ggtitle("Quantile (Equi-obs) bins") + 
+  labs(y = "log E[rho_ij | A2 binned]", x = "A2 - bin mid-point")
+print(plot1)
+
+# Equi-width bins
+df_A2_plot <- data.frame(A2_plot)
+Equi_bins_breaks <- seq(min(A2_plot), max(A2_plot), length.out = num_bins + 1)
+A2_plot_bin_mid = (Equi_bins_breaks[1:num_bins] + Equi_bins_breaks[2:(num_bins + 1)])/2
+
+df_A2_plot <- df_A2_plot %>% mutate(A2_plot_bin = cut(A2_plot, 
+                                                      breaks = Equi_bins_breaks, 
+                                                      include.lowest=TRUE))
+df_A2_plot <- df_A2_plot %>% mutate(partial_corr_GLASSO = partial_corr_GLASSO)
+
+
+plot(A2_plot_bin_mid, log(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin), mean)$x), xlab = "A2 - bin mid-point", ylab = "log E[rho_ij | A2 binned]", main = "Equi-spaced bins")
+#lines(seq(-3, 3, length.out = 1000), log(2) - 2*(beta0_GLASSO[1]  + log(n)) - 2*seq(-3, 3, length.out = 1000)*beta0_GOLAZO_A2[2], lwd = 3, col = "red", lty = 2)
+#lines(seq(-3, 3, length.out = 1000), log(2) - 2*(beta_GOLAZO_A2_full[1]  + log(n)) - 2*seq(-3, 3, length.out = 1000)*beta_GOLAZO_A2_full[2], lwd = 3, col = "blue", lty = 2)
+#legend("bottomright", c("Fixing beta0 = beta0_GLASSO", "Joint optimisation of beta0 and beta2"), col = c("red", "blue"), lty = c(2, 2))
+
+
+df_plot <- data.frame(A2_bin_mean = A2_plot_bin_mid, 
+                      Mean_r_ij2 = aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin), mean)$x, 
+                      SE_r_ij2 = sqrt(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin), var)$x)/sqrt(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin), length)$x))
+
+
+plot1 <- ggplot(df_plot, aes(x=A2_bin_mean, y=log(Mean_r_ij2))) + 
+  geom_pointrange(aes(ymin = log(Mean_r_ij2 - SE_r_ij2), ymax = log(Mean_r_ij2 + SE_r_ij2)), position=position_dodge(0.05)) +
+  ggtitle("Equi-spaced bins") + 
+  labs(y = "log E[rho_ij | A2 binned]", x = "A2 - bin mid-point")
+print(plot1)
+
+```
+
+```{r GLASSO_vs_A2_2_0.5_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 3, fig.width = 5, dev = "tikz"}
+par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+
+# Equi-width bins
+df_A2_plot <- data.frame(A2_plot)
+Equi_bins_breaks <- seq(min(A2_plot), max(A2_plot), length.out = num_bins + 1)
+A2_plot_bin_mid = (Equi_bins_breaks[1:num_bins] + Equi_bins_breaks[2:(num_bins + 1)])/2
+
+df_A2_plot <- df_A2_plot %>% mutate(A2_plot_bin = cut(A2_plot, 
+                                                      breaks = Equi_bins_breaks, 
+                                                      include.lowest=TRUE))
+df_A2_plot <- df_A2_plot %>% mutate(partial_corr_GLASSO = partial_corr_GLASSO)
+
+
+plot(A2_plot_bin_mid, log(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2_plot$A2_plot_bin), mean)$x), xlab = "Policy Risks Similarity Index ($A_2$)", ylab = "$\\log \\hat{E}[\\rho_{ij}^2 | A_2]$", main = "")
+
+```
+
+
+# GOLAZO - Economic (A1) {.tabset}
+
+## Inference
+
+```{r GOLAZO_A1_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE, error = TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta_GOLAZO_A1_full <- matrix(NA, nrow = N, ncol = 2)
+
+#beta0_grid_length <- 20
+#beta0_grid_max <- 4
+#beta0_grid_min <- -1
+beta0_grid_max <- 5
+beta0_grid_min <- 2
+
+#beta1_grid_length <- 20
+#beta1_grid_max <- -0.5
+#beta1_grid_min <- -4
+beta1_grid_max <- -2
+beta1_grid_min <- -5
+
+
+
+ebic_eval_optim_GOLAZO_A1_full <- rep(NA, N)
+
+time_GOLAZO_A1_freq.start <- Sys.time()
+for(j in 1:N){
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(stock_trans))  
+  
+  ## To deal with Quadprog failing ##
+  beta_optimise <- NA
+  beta_optimise <- BayesianOptimization(
+      FUN = function(beta0, beta1){ebic_eval_network_BayesOpt(n, R, A1, beta0, beta1, ebic.gamma = ebic.gamma, edge.tol = edge.tol, tol = 1e-5)},
+      bounds = list(beta0 = c(beta0_grid_min, beta0_grid_max),
+                  beta1 = c(beta1_grid_min, beta1_grid_max)),
+      init_points = 5,
+      n_iter = 15, ## 15
+      acq = "ucb", 
+      kernel = list(type = "exponential", power = 2),
+  )
+
+  
+  beta_GOLAZO_A1_full[j,] <- beta_optimise$Best_Par
+  # JACK: Saving the EBIC 
+  ebic_eval_optim_GOLAZO_A1_full[j] <- - beta_optimise$Best_Value
+  
+  #### Using the optimal beta0 ##
+  # U <- exp(beta0 + beta1*A1) 
+  U <- exp(beta_GOLAZO_A1_full[j,1] + beta_GOLAZO_A1_full[j,2]*A1) 
+  
+  ###################################
+  # we are now ready to run GOLAZO and output the optimal K
+  diag(U) <- 0
+  
+  res <- golazo(R, -U, U, tol = 1e-5, verbose=FALSE)
+  #Theta_hat_GOLAZO_A1_full <- round(res$K, round.tol)  
+  Rho_hat_GOLAZO_A1_full <- threshold(cov2cor(res$K), edge.tol)
+
+}
+time_GOLAZO_A1_freq.end <- Sys.time()
+
+```
+
+## Analysis
+
+```{r GOLAZO_A1_diag_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+
+beta_GOLAZO_A1_full
+
+ebic_eval_optim_GOLAZO_A1_full
+
+sum(Rho_hat_GOLAZO_A1_full[lower.tri((Rho_hat_GOLAZO_A1_full))] != 0) # 1813 # 596 #540 
+sum(Rho_hat_GOLAZO_A1_full[lower.tri((Rho_hat_GOLAZO_A1_full))] == 0) # 3038 # 4255 # 4311
+
+## ploting the EBIC in beta0 and beta1
+library(graphics)
+contour(beta0_grid, beta1_grid, beta_optimise, xlab = "beta0", ylab = "beta1")
+points(beta_GOLAZO_A1_full[1], beta_GOLAZO_A1_full[2], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+time_GOLAZO_A1_freq1 <- time_GOLAZO_A1_freq.end - time_GOLAZO_A1_freq.start
+time_GOLAZO_A1_freq <- round(time_GOLAZO_A1_freq1/N, 3)
+time_GOLAZO_A1_freq
+
+```
+
+
+# GOLAZO - Policy (A2) {.tabset}
+
+## Inference
+
+```{r GOLAZO_A2_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE, error = TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta_GOLAZO_A2_full <- matrix(NA, nrow = N, ncol = 2)
+
+#beta0_grid_length <- 20
+#beta0_grid_max <- 2
+#beta0_grid_min <- -1
+beta0_grid_max <- 3
+beta0_grid_min <- 0
+
+#beta2_grid_length <- 20
+beta2_grid_max <- -1.5
+beta2_grid_min <- -3.5
+
+
+
+ebic_eval_optim_GOLAZO_A2_full <- rep(NA, N)
+
+time_GOLAZO_A2_freq.start <- Sys.time()
+for(j in 1:N){
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(stock_trans))  
+  
+  beta_optimise <- BayesianOptimization(
+      FUN = function(beta0, beta2){ebic_eval_network_BayesOpt(n, R, A2, beta0, beta2, ebic.gamma = ebic.gamma, edge.tol = edge.tol, tol = 1e-5)},
+      bounds = list(beta0 = c(beta0_grid_min, beta0_grid_max),
+                  beta2 = c(beta2_grid_min, beta2_grid_max)),
+      init_points = 5,
+      n_iter = 15, ## 15
+      acq = "ucb", 
+      kernel = list(type = "exponential", power = 2),
+  )
+
+  
+  beta_GOLAZO_A2_full[j,] <- beta_optimise$Best_Par
+  # JACK: Saving the EBIC 
+  ebic_eval_optim_GOLAZO_A2_full[j] <- - beta_optimise$Best_Value
+  
+  #### Using the optimal beta0 ##
+  # U <- exp(beta0 + beta1*A2) 
+  U <- exp(beta_GOLAZO_A2_full[j,1] + beta_GOLAZO_A2_full[j,2]*A2) 
+  
+  ###################################
+  # we are now ready to run GOLAZO and output the optimal K
+  diag(U) <- 0
+  
+  res <- golazo(R, -U, U, tol = 1e-5, verbose=FALSE)
+  #Theta_hat_GOLAZO_A2_full <- round(res$K, round.tol)  
+  Rho_hat_GOLAZO_A2_full <- threshold(cov2cor(res$K), edge.tol)
+
+}
+time_GOLAZO_A2_freq.end <- Sys.time()
+
+```
+
+## Analysis
+
+```{r GOLAZO_A2_diag_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+
+beta_GOLAZO_A2_full
+
+ebic_eval_optim_GOLAZO_A2_full
+
+sum(Rho_hat_GOLAZO_A2_full[lower.tri((Rho_hat_GOLAZO_A2_full))] != 0) # 1813 # 596 #540 
+sum(Rho_hat_GOLAZO_A2_full[lower.tri((Rho_hat_GOLAZO_A2_full))] == 0) # 3038 # 4255 # 4311
+
+## ploting the EBIC in beta0 and beta2
+contour(beta0_grid, beta2_grid, beta_optimise, xlab = "beta0", ylab = "beta2")
+points(beta_GOLAZO_A2_full[1], beta_GOLAZO_A2_full[2], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+### Plotting the fitted partial correlations against the network
+
+A2_plot <- A2[upper.tri(A2)]
+
+partial_corr_GOLAZO_A2_full  <- - Rho_hat_GOLAZO_A2_full[upper.tri(Rho_hat_GOLAZO_A2_full)]
+
+none_na_plot <- which(log(partial_corr_GOLAZO_A2_full^2)!=-Inf)
+
+plot(x = A2_plot[none_na_plot], y = log(partial_corr_GOLAZO_A2_full^2)[none_na_plot], xlab = "log(Facebook Connection)", ylab ="log(r^2)", main = "GOLAZO A2 estimated")
+l <- loess(log(partial_corr_GOLAZO_A2_full^2)[none_na_plot] ~ A2_plot[none_na_plot])
+o <- order(l$x)
+lines(l$x[o], l$fitted[o], col='red')
+
+time_GOLAZO_A2_freq1 <- time_GOLAZO_A2_freq.end - time_GOLAZO_A2_freq.start
+time_GOLAZO_A2_freq <- round(time_GOLAZO_A2_freq1/N, 3)
+time_GOLAZO_A2_freq
+
+```
+
+# GOLAZO - Economic & Policy (A1 & A2) {.tabset}
+
+## Inference
+
+```{r GOLAZO_A1A2_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE,  error = TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta_GOLAZO_A1A2_full <- matrix(NA, nrow = N, ncol = 3)
+
+#beta0_grid_length <- 20
+#beta0_grid_max <- 3
+#beta0_grid_min <- 0
+#beta0_grid_max <- 5
+#beta0_grid_min <- 1.5
+#beta0_grid_max <- 8
+#beta0_grid_min <- 5.5
+#beta0_grid_max <- 9.5
+#beta0_grid_min <- 7
+beta0_grid_max <- 11.5
+beta0_grid_min <- 9
+
+#beta1_grid_length <- 20
+beta1_grid_max <- -3
+beta1_grid_min <- -5.5
+
+#beta2_grid_length <- 20
+#beta2_grid_max <- -2
+#beta2_grid_min <- -4.5
+#beta2_grid_max <- -3.5
+#beta2_grid_min <- -6
+beta2_grid_max <- -3
+beta2_grid_min <- -6.5
+
+ebic_eval_optim_GOLAZO_A1A2_full <- rep(NA, N)
+
+time_GOLAZO_A1A2_freq.start <- Sys.time()
+for(j in 1:N){
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(stock_trans))  
+  
+  beta_optimise <- BayesianOptimization(
+      FUN = function(beta0, beta1, beta2){ebic_eval_two_networks_BayesOpt(n, R, A1, A2, beta0, beta1, beta2, ebic.gamma = ebic.gamma, edge.tol = edge.tol, tol = 1e-5)},
+      bounds = list(beta0 = c(beta0_grid_min, beta0_grid_max),
+                  beta1 = c(beta1_grid_min, beta1_grid_max),
+                  beta2 = c(beta2_grid_min, beta2_grid_max)),
+      init_points = 5,
+      n_iter = 20, ## 20
+      acq = "ucb", 
+      kernel = list(type = "exponential", power = 2),
+    )
+
+  
+  beta_GOLAZO_A1A2_full[j,] <- beta_optimise$Best_Par
+  # JACK: Saving the EBIC 
+  ebic_eval_optim_GOLAZO_A1A2_full[j] <- - beta_optimise$Best_Value
+  
+  #### Using the optimal beta0 ##
+  # U <- exp(beta0 + beta1*A1 + beta2*A2) 
+  U <- exp(beta_GOLAZO_A1A2_full[j,1] + beta_GOLAZO_A1A2_full[j,2]*A1 + beta_GOLAZO_A1A2_full[j,3]*A2) 
+  
+  ###################################
+  # we are now ready to run GOLAZO and output the optimal K
+  diag(U) <- 0
+  
+  res <- golazo(R, -U, U, tol = 1e-5, verbose=FALSE)
+  #Theta_hat_GOLAZO_A1A2_full <- round(res$K, round.tol)  
+  Rho_hat_GOLAZO_A1A2_full <- threshold(cov2cor(res$K), edge.tol)
+
+}
+time_GOLAZO_A1A2_freq.end <- Sys.time()
+
+
+```
+
+## Analysis
+
+```{r GOLAZO_A1A2_diag_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+
+beta_GOLAZO_A1A2_full
+
+ebic_eval_optim_GOLAZO_A1A2_full
+
+sum(Rho_hat_GOLAZO_A1A2_full[lower.tri((Rho_hat_GOLAZO_A1A2_full))] != 0)
+sum(Rho_hat_GOLAZO_A1A2_full[lower.tri((Rho_hat_GOLAZO_A1A2_full))] == 0)
+
+## becuase i repeated 0 by accident
+beta_optimise_plot <- beta_optimise
+
+## ploting the EBIC in Bivariate Marginals - need to marginalise
+contour(beta1_grid, beta2_grid, apply(beta_optimise_plot, MARGIN = c(2, 3), FUN = function(x){mean(x, na.rm = TRUE)}), xlab = "beta1", ylab = "beta2")
+points(beta_GOLAZO_A1A2_full[2], beta_GOLAZO_A1A2_full[3], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+contour(beta0_grid, beta1_grid, apply(beta_optimise_plot, MARGIN = c(1, 2), FUN = function(x){mean(x, na.rm = TRUE)}), xlab = "beta0", ylab = "beta1")
+points(beta_GOLAZO_A1A2_full[1], beta_GOLAZO_A1A2_full[2], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+contour(beta0_grid, beta2_grid, apply(beta_optimise_plot, MARGIN = c(1, 3), FUN = function(x){mean(x, na.rm = TRUE)}), xlab = "beta0", ylab = "beta2")
+points(beta_GOLAZO_A1A2_full[1], beta_GOLAZO_A1A2_full[3], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+## fixing the missing at it's optimum
+## ploting the EBIC in Bivariate Marginals - need to marginalise
+contour(beta1_grid, beta2_grid, beta_optimise_plot[min_coord[1],,], xlab = "beta1", ylab = "beta2", main = "beta0 = hat_beta0")
+points(beta_GOLAZO_A1A2_full[2], beta_GOLAZO_A1A2_full[3], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+contour(beta0_grid, beta1_grid, beta_optimise_plot[,,min_coord[3]], xlab = "beta0", ylab = "beta1", main = "beta2 = hat_beta2")
+points(beta_GOLAZO_A1A2_full[1], beta_GOLAZO_A1A2_full[2], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+contour(beta0_grid, beta2_grid, beta_optimise_plot[,min_coord[2],], xlab = "beta0", ylab = "beta2", main = "beta1 = hat_beta1")
+points(beta_GOLAZO_A1A2_full[1], beta_GOLAZO_A1A2_full[3], col = "red", pch = 4, cex = 1.5, lwd = 3)
+
+## Close to the minimum 
+
+n_close <- 10
+beta_close <- matrix(NA, nrow = n_close, ncol = 3)
+for(k in 1:n_close){
+  min_close_coord <- which(beta_optimise == (sort(beta_optimise)[k]), arr.ind = TRUE)
+  
+  beta_close[k, 1] <- beta0_grid[min_close_coord[1]]
+  beta_close[k, 2] <- beta1_grid[min_close_coord[2]]
+  beta_close[k, 3] <- beta2_grid[min_close_coord[3]]
+}
+
+beta_close
+sort(beta_optimise)[1:n_close]
+
+time_GOLAZO_A1A2_freq1 <- time_GOLAZO_A1A2_freq.end - time_GOLAZO_A1A2_freq.start
+time_GOLAZO_A1A2_freq <- round(time_GOLAZO_A1A2_freq1/N, 3)
+time_GOLAZO_A1A2_freq
+
+```
+
+# Full Comparison {.tabset}
+
+```{r full_comparison_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+
+ebic_eval_optim_GLASSO
+ebic_eval_optim_GOLAZO_A1_full
+ebic_eval_optim_GOLAZO_A2_full
+ebic_eval_optim_GOLAZO_A1A2_full
+
+beta0_GLASSO
+beta_GOLAZO_A1_full
+beta_GOLAZO_A2_full
+beta_GOLAZO_A1A2_full
+
+
+## BIC adjusted
+ebic_eval_optim_GLASSO
+ebic_eval_optim_GOLAZO_A1_full + (log(n) + 4 * ebic.gamma * log(p))
+ebic_eval_optim_GOLAZO_A2_full + (log(n) + 4 * ebic.gamma * log(p))
+ebic_eval_optim_GOLAZO_A1A2_full + 2*(log(n) + 4 * ebic.gamma * log(p))
+
+options(xtable.floating = FALSE)
+options(xtable.timestamp = "")
+
+## Frequentist
+table_frame_freq <- data.frame("Method" = c("GLASSO", "GOLAZO - A1", "GOLAZO - A2", "GOLAZO - A1 & A2"), 
+                               "EBIC" = c(ebic_eval_optim_GLASSO, 
+                                          ebic_eval_optim_GOLAZO_A1_full + (log(n) + 4 * ebic.gamma * log(p)),
+                                          ebic_eval_optim_GOLAZO_A2_full + (log(n) + 4 * ebic.gamma * log(p)),
+                                          ebic_eval_optim_GOLAZO_A1A2_full + 2*(log(n) + 4 * ebic.gamma * log(p))),
+                               "hat{beta}_0" = c(beta0_GLASSO, 
+                                                 beta_GOLAZO_A1_full[,1],
+                                                 beta_GOLAZO_A2_full[,1],
+                                                 beta_GOLAZO_A1A2_full[,1]),
+                               "hat{beta}_1" = c(NA, 
+                                                 beta_GOLAZO_A1_full[,2],
+                                                 NA, 
+                                                 beta_GOLAZO_A1A2_full[,2]), 
+                               "hat{beta}_2" = c(NA, 
+                                                 NA, 
+                                                 beta_GOLAZO_A2_full[,2], 
+                                                 beta_GOLAZO_A1A2_full[,3]),
+                               "Edges" = c(
+                            sum(Rho_hat_GLASSO[lower.tri((Rho_hat_GLASSO))] != 0),     
+                            sum(Rho_hat_GOLAZO_A1_full[lower.tri((Rho_hat_GOLAZO_A1_full))] != 0),   
+                            sum(Rho_hat_GOLAZO_A2_full[lower.tri((Rho_hat_GOLAZO_A2_full))] != 0),     
+                            sum(Rho_hat_GOLAZO_A1A2_full[lower.tri((Rho_hat_GOLAZO_A1A2_full))] != 0)),
+                               "Non-Edges" = c(
+                            sum(Rho_hat_GLASSO[lower.tri((Rho_hat_GLASSO))] == 0),     
+                            sum(Rho_hat_GOLAZO_A1_full[lower.tri((Rho_hat_GOLAZO_A1_full))] == 0),    
+                            sum(Rho_hat_GOLAZO_A2_full[lower.tri((Rho_hat_GOLAZO_A2_full))] == 0),     
+                            sum(Rho_hat_GOLAZO_A1A2_full[lower.tri((Rho_hat_GOLAZO_A1A2_full))] == 0))
+                              )
+xtable(table_frame_freq, digits=3)
+
+kable(table_frame_freq)
+
+```
+

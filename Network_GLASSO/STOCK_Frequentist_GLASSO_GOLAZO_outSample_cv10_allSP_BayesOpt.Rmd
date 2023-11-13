@@ -1,0 +1,1012 @@
+---
+title: "STOCK Frequentist GLASSO and GOLAZO Insample Analysis"
+author: "Jack Jewson"
+date: "19/07/2022"
+output: html_document
+---
+
+Here I run GLASSO and GOLAZO for the Stock-market data using the Economic and Policy networks for the S\&P500 intersected data
+
+# Preliminaries {.tabset}
+
+## working directory
+
+```{r working_directory, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+data_dir <- '/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/STOCK_DATA'
+
+```
+
+## Packages
+
+```{r packages, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+## UNLOAD ALL PACKAGES FIRST 
+#rm(list = ls(all = TRUE))
+
+library(tidyverse)
+
+library(readr)
+library(devtools)
+#install_github("pzwiernik/golazo", build_vignettes=TRUE)
+#library(golazo) ## I now call the function with the pd.solve
+#source('C:/Users/JeJewson/Documents/Barcelona_Yr1/LisCode/GOLAZO_function.R')
+source("/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/GOLAZO_function_pd_solve.R")
+library(polynom)
+
+library(graphics)
+library(xtable)
+library(knitr)
+
+library(rBayesianOptimization)
+
+library(mnormt)
+
+```
+
+### Parallel Cross-Validation
+
+```{r packages_cv, include=FALSE,echo=FALSE, eval=TRUE,cache=FALSE}
+library(foreach)
+library(doParallel)
+
+#setup parallel backend to use many processors
+cores=detectCores()
+#cores <- cores[1] - 1 #not to overload your computer
+#cores <- 10
+cores <- 5
+cl <- makeCluster(cores) 
+registerDoParallel(cl)
+
+```
+
+## Functions 
+
+```{r functions, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+ebic_eval <- function(n, R, U, ebic.gamma, edge.tol, tol){
+  res <- golazo(R, L = -U, U = U, verbose = FALSE, tol = tol)
+  K <- res$K
+  KR <- stats::cov2cor(K)         #to make edge count independend of scalings
+  nedg <- length(which(abs(KR[upper.tri(abs(KR), diag = FALSE)]) > edge.tol))
+  ## p is the dimensions of R I think - this should be fine but isn't great code!
+  ebic <- -(n)*(log(det(K)) - sum(R*K)) + nedg * (log(n) + 4 * ebic.gamma * log(p))
+  return(ebic)   
+}
+
+ebic_eval_BayesOpt <- function(n, R, beta0, ebic.gamma, edge.tol, tol){
+  p <- nrow(R)
+  U <- matrix(exp(beta0), nrow = p, ncol = p) 
+  diag(U) <- 0
+  ebic <- ebic_eval(n, R, U, ebic.gamma, edge.tol, tol)
+  return(list("Score" = -ebic, "Pred" = 0))   
+}
+
+ebic_eval_network <- function(n, R, A, beta0, beta1, ebic.gamma, edge.tol, tol){
+  U <- exp(beta0 + beta1*A)           #### remember a = beta1, b= beta0
+  #U <- exp(beta0)*(1 - A) + exp(beta1)*A
+  diag(U) <- 0
+  return(ebic_eval(n, R, U, ebic.gamma, edge.tol, tol))
+}
+
+ebic_eval_network_BayesOpt <- function(n, R, A, beta0, beta1, ebic.gamma, edge.tol, tol){
+  U <- exp(beta0 + beta1*A)           #### remember a = beta1, b= beta0
+  #U <- exp(beta0)*(1 - A) + exp(beta1)*A
+  diag(U) <- 0
+  ebic <- ebic_eval(n, R, U, ebic.gamma, edge.tol, tol)
+  return(list("Score" = -ebic, "Pred" = 0))
+}
+
+ebic_eval_two_networks <- function(n, R, A1, A2, beta0, beta1, beta2, ebic.gamma, edge.tol, tol){
+   U <- exp(beta0 + beta1*A1 + beta2*A2)           #### remember a = beta1, b= beta0
+   diag(U) <- 0
+   return(ebic_eval(n, R, U, ebic.gamma, edge.tol, tol))
+}
+
+ebic_eval_two_networks_BayesOpt <- function(n, R, A1, A2, beta0, beta1, beta2, ebic.gamma, edge.tol, tol){
+   U <- exp(beta0 + beta1*A1 + beta2*A2)           #### remember a = beta1, b= beta0
+   diag(U) <- 0
+   try(ebic <- ebic_eval(n, R, U, ebic.gamma, edge.tol, tol))
+   return(list("Score" = -ebic, "Pred" = 0))
+}
+
+ebic_eval_three_networks_BayesOpt <- function(n, R, A1, A2, A3, beta0, beta1, beta2, beta3, ebic.gamma, edge.tol, tol){
+   U <- exp(beta0 + beta1*A1 + beta2*A2 + beta3*A3)  
+   diag(U) <- 0
+   try(ebic <- ebic_eval(n, R, U, ebic.gamma, edge.tol, tol))
+   return(list("Score" = -ebic, "Pred" = 0))
+}
+
+
+standardise_network_matrix_tri <- function(A) {
+  ## before we ignored the symmetry which matters (slightly) for the variance
+  p <- nrow(A)
+  
+  A_tri <- A[upper.tri(A)]
+  bar_A_tri <- mean(A_tri)
+  #S2_A_tri <- var(A_tri)
+  S2_A_tri <- 1/length(A_tri)*sum((A_tri - bar_A_tri)^2)
+  
+  return((A - bar_A_tri)/sqrt(S2_A_tri))
+}
+
+## Turning the correlation matrix given by the golazo function back to a covariance matrix, useful in out-of-sample-llh
+cor2cov <- function(Theta_cor, sigma2_vect){
+  # Theta_cor is correlation matrix, sqrt(sigma2_vect) is the standard deviations of each variable
+  p <- nrow(Theta_cor)
+  Theta_cov <- matrix(NA, nrow = p, ncol = p)
+  for(i in 1:p){
+    Theta_cov[, i] <- Theta_cor[,i]*sqrt(sigma2_vect[i])*sqrt(sigma2_vect)   
+  }
+  return(Theta_cov)
+}
+
+
+threshold <- function(Rho_mat, threshold){
+  return(Rho_mat*(abs(Rho_mat) >= threshold))
+}
+
+
+
+## No Network matrix
+beta0_max_GLASSO <- function(R){
+  return(log(max(abs(R - diag(diag(R))))))## check we can irgnore diags
+  #return(log(max(max(diag(R)^2) - abs(R)))) ## Piotr's updated bound!
+}
+
+
+
+```
+
+## Hyparameters
+
+Need to decide whether to use EBIC.gamma = 0 or 0.5!
+
+```{r hyperparameters, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+ebic.gamma <- 0           # set to zero to get BIC
+edge.tol <-  1e-6         # be consistent with GLASSO+EBIC method
+
+```
+
+# Data Loading
+
+```{r data_load, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+setwd(data_dir)
+
+stock_trans <- as.matrix(read_csv('stock_trans_SP.csv'))[, -1]
+E_pears <- as.matrix(read_csv('E_pears_SP.csv'))[, -1]
+P_pears <- as.matrix(read_csv('P_pears_SP.csv'))[, -1]
+
+
+n <- nrow(stock_trans)
+p <- ncol(stock_trans)
+
+```
+
+# Training and Testing
+
+```{r training_testing, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+N_folds <- 10
+
+n <- round(nrow(stock_trans)/N_folds)
+
+train_data <- list()
+test_data <- list()
+
+set.seed(1234)
+stock_trans_seq_shuffle <- sample(seq_len(nrow(stock_trans)), nrow(stock_trans), replace = FALSE)
+
+for (i in 1:(N_folds - 1)){
+  picked <- (i - 1)*n + 1:n 
+  train_data[[i]] <- stock_trans[-stock_trans_seq_shuffle[picked], ]
+  test_data[[i]]  <- stock_trans[stock_trans_seq_shuffle[picked], ]
+}
+not_picked <- 1:((N_folds - 1)*n) 
+train_data[[N_folds]] <- stock_trans[stock_trans_seq_shuffle[not_picked], ]
+test_data[[N_folds]]  <- stock_trans[-stock_trans_seq_shuffle[not_picked], ]
+  
+  
+N <- N_folds  
+```
+
+# GLASSO {.tabset}
+
+## Inference
+
+```{r GLASSO_run, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE, error = TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta0_GLASSO <-rep(NA, N)
+#beta0_grid_length <- 20
+#beta0_grid_min <- -3
+
+#beta0_grid_max <- -0.5
+#beta0_grid_min <- -2
+
+beta0_grid_max <- -0.5
+beta0_grid_min <- -3
+
+
+#for(j in 1:N){
+GLASSO_sim_results <- foreach(j=1:N, .combine = 'rbind', .packages = c("stats", "mvtnorm", "rBayesianOptimization"), .export = c("golazo", "pd.solve")) %dopar% {
+  
+  n <- nrow(train_data[[j]])
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(train_data[[j]]))  
+  
+  ## BayesOpt ##
+  beta_optimise <- BayesianOptimization(
+    FUN = function(beta0){ebic_eval_BayesOpt(n, R, beta0, ebic.gamma = ebic.gamma, edge.tol = edge.tol, tol = 1e-6)},
+    bounds = list(beta0 = c(beta0_grid_min, min(beta0_grid_max, beta0_max_GLASSO(R)))),
+    init_points = 5,
+    n_iter = 10, ## 7 evals vs 20/5
+    acq = "ucb", 
+    kernel = list(type = "exponential", power = 2),
+  )
+
+  
+  beta0_GLASSO <- beta_optimise$Best_Par
+  # JACK: Saving the EBIC 
+  ebic_eval_optim_GLASSO <- - beta_optimise$Best_Value
+  
+  #### Using the optimal beta0 ##
+  GraphicalModel <- golazo (R, L = exp(beta0_GLASSO) * L, U =exp(beta0_GLASSO)* U, tol = 1e-6, verbose=FALSE)
+  
+  #Theta_hat_GLASSO <- round(GraphicalModel$K, round.tol)   
+  Rho_hat_GLASSO <- threshold(cov2cor(GraphicalModel$K), edge.tol)
+  
+  #out-of-sample log-likelihood
+  n_test <- nrow(test_data[[j]])
+  
+  out_sample_llh_GLASSO <- 1/n_test*sum(dmvnorm(test_data[[j]], mean = rep(0, p), sigma = cor2cov(cov2cor(solve(Rho_hat_GLASSO)), diag(cov(train_data[[j]]))), log = TRUE))
+  
+  #cat("fold", j, "done", "\n")
+  c(beta0_GLASSO, ebic_eval_optim_GLASSO, out_sample_llh_GLASSO)
+
+}
+
+
+```
+
+## Analysis
+
+```{r GLASSO_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, error = TRUE}
+
+GLASSO_sim_results
+
+mean(GLASSO_sim_results[,2])
+mean(GLASSO_sim_results[,3])
+
+```
+
+
+# Motivtaing Plots {.tabset}
+
+## Economic (A1)
+
+```{r Theta_vs_A1, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+A1 <- standardise_network_matrix_tri(E_pears)
+diag(A1) <- 0
+
+```
+
+## Policy (A2)
+
+```{r Theta_vs_A2, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+A2 <- standardise_network_matrix_tri(P_pears)
+diag(A2) <- 0
+
+```
+
+
+# GOLAZO - Economic (A1) {.tabset}
+
+## Inference
+
+```{r GOLAZO_A1, include=TRUE,echo=TRUE, eval=TRUE, cache=TRUE, error = TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta_GOLAZO_A1_full <- matrix(NA, nrow = N, ncol = 2)
+
+#beta0_grid_length <- 20
+beta0_grid_max <- 0
+beta0_grid_min <- -2.5
+
+#beta1_grid_length <- 20
+beta1_grid_max <- -0.5
+beta1_grid_min <- -2.5
+
+GOLAZO_A1_sim_results <- foreach(j=1:N, .combine = 'rbind',.packages = c("stats", "mvtnorm", "rBayesianOptimization"), .export = c("golazo", "pd.solve")) %dopar% {
+  
+  n <- nrow(train_data[[j]])
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(train_data[[j]])) 
+  
+  beta_optimise <- BayesianOptimization(
+      FUN = function(beta0, beta1){ebic_eval_network_BayesOpt(n, R, A1, beta0, beta1, ebic.gamma = ebic.gamma, edge.tol = edge.tol, tol = 1e-5)},
+      bounds = list(beta0 = c(beta0_grid_min, beta0_grid_max),
+                  beta1 = c(beta1_grid_min, beta1_grid_max)),
+      init_grid_dt = list(beta0 = GLASSO_sim_results[j,1], 
+                          beta1 = 0,
+                          Value = -GLASSO_sim_results[j,2]),
+      init_points = 4,
+      n_iter = 20, ## 15,
+      acq = "ucb", 
+      kernel = list(type = "exponential", power = 2),
+  )
+
+  
+  beta_GOLAZO_A1 <- beta_optimise$Best_Par
+  # JACK: Saving the EBIC 
+  ebic_eval_optim_GOLAZO_A1 <- - beta_optimise$Best_Value
+  
+  #### Using the optimal beta0 ##
+  # U <- exp(beta0 + beta1*A1) 
+  U <- exp(beta_GOLAZO_A1[1] + beta_GOLAZO_A1[2]*A1) 
+  
+  ###################################
+  # we are now ready to run GOLAZO and output the optimal K
+  diag(U) <- 0
+  
+  res <- golazo(R, -U, U, tol = 1e-5, verbose=FALSE)
+  #Theta_hat_GOLAZO_A1_full <- round(res$K, round.tol)  
+  Rho_hat_GOLAZO_A1 <- threshold(cov2cor(res$K), edge.tol)
+  
+  #out-of-sample log-likelihood
+  n_test <- nrow(test_data[[j]])
+  
+  out_sample_llh_GOLAZO_A1 <- 1/n_test*sum(dmvnorm(test_data[[j]], mean = rep(0, p), sigma = cor2cov(cov2cor(solve(Rho_hat_GOLAZO_A1)), diag(cov(train_data[[j]]))), log = TRUE))
+  
+  #cat("fold", j, "done", "\n")
+  c(beta_GOLAZO_A1, ebic_eval_optim_GOLAZO_A1, out_sample_llh_GOLAZO_A1)
+
+}
+
+```
+
+## Analysis
+
+```{r GOLAZO_A1_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, error = TRUE}
+
+GOLAZO_A1_sim_results
+
+mean(GOLAZO_A1_sim_results[,3])
+mean(GOLAZO_A1_sim_results[,4])
+
+mean(GLASSO_sim_results[,2])
+mean(GLASSO_sim_results[,3])
+
+GLASSO_sim_results[,2] - GOLAZO_A1_sim_results[,3]
+GOLAZO_A1_sim_results[,4] - GLASSO_sim_results[,3]
+
+mean(GOLAZO_A1_sim_results[which(GLASSO_sim_results[,2] - GOLAZO_A1_sim_results[,3]> 0), 4]) + mean(GLASSO_sim_results[which(GLASSO_sim_results[,2] - GOLAZO_A1_sim_results[,3]< 0), 3]) 
+
+
+```
+
+
+
+# GOLAZO - Policy (A2) {.tabset}
+
+## Inference
+
+```{r GOLAZO_A2, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE, error = TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta_GOLAZO_A2_full <- matrix(NA, nrow = N, ncol = 2)
+
+#beta0_grid_length <- 20
+beta0_grid_max <- 0
+beta0_grid_min <- -2
+
+#beta2_grid_length <- 20
+beta2_grid_max <- 0
+beta2_grid_min <- -2
+
+
+GOLAZO_A2_sim_results <- foreach(j=1:N, .combine = 'rbind',.packages = c("stats", "mvtnorm", "rBayesianOptimization"), .export = c("golazo", "pd.solve")) %dopar% {
+  
+  n <- nrow(train_data[[j]])
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(train_data[[j]])) 
+  
+  beta_optimise <- BayesianOptimization(
+      FUN = function(beta0, beta2){ebic_eval_network_BayesOpt(n, R, A2, beta0, beta2, ebic.gamma = ebic.gamma, edge.tol = edge.tol, tol = 1e-5)},
+      bounds = list(beta0 = c(beta0_grid_min, beta0_grid_max),
+                  beta2 = c(beta2_grid_min, beta2_grid_max)),
+      init_grid_dt = list(beta0 = GLASSO_sim_results[j,1], 
+                          beta2 = 0,
+                          Value = -GLASSO_sim_results[j,2]),
+      init_points = 5,
+      n_iter = 15, ## 15
+      acq = "ucb", 
+      kernel = list(type = "exponential", power = 2),
+    )
+
+  
+  beta_GOLAZO_A2 <- beta_optimise$Best_Par
+  # JACK: Saving the EBIC 
+  ebic_eval_optim_GOLAZO_A2 <- - beta_optimise$Best_Value
+  
+  #### Using the optimal beta0 ##
+  # U <- exp(beta0 + beta1*A2) 
+  U <- exp(beta_GOLAZO_A2[1] + beta_GOLAZO_A2[2]*A2) 
+  
+  ###################################
+  # we are now ready to run GOLAZO and output the optimal K
+  diag(U) <- 0
+  
+  res <- golazo(R, -U, U, tol = 1e-5, verbose=FALSE)
+  #Theta_hat_GOLAZO_A2_full <- round(res$K, round.tol)  
+  Rho_hat_GOLAZO_A2 <- threshold(cov2cor(res$K), edge.tol)
+  
+  #out-of-sample log-likelihood
+  n_test <- nrow(test_data[[j]])
+  
+  out_sample_llh_GOLAZO_A2 <- 1/n_test*sum(dmvnorm(test_data[[j]], mean = rep(0, p), sigma = cor2cov(cov2cor(solve(Rho_hat_GOLAZO_A2)), diag(cov(train_data[[j]]))), log = TRUE))
+  
+  #cat("fold", j, "done", "\n")
+  c(beta_GOLAZO_A2, ebic_eval_optim_GOLAZO_A2, out_sample_llh_GOLAZO_A2)
+
+}
+
+```
+
+## Analysis
+
+```{r GOLAZO_A2_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, error = TRUE,  error = TRUE}
+
+GOLAZO_A2_sim_results
+
+mean(GOLAZO_A2_sim_results[,3])
+mean(GOLAZO_A2_sim_results[,4])
+
+```
+
+
+# GOLAZO - Economic & Policy (A1 & A2) {.tabset}
+
+## Inference
+
+```{r GOLAZO_A1A2, include=TRUE,echo=TRUE, eval = TRUE,cache=TRUE,  error = TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta_GOLAZO_A1A2_full <- matrix(NA, nrow = N, ncol = 3)
+
+#beta0_grid_length <- 20
+beta0_grid_max <- 2.5
+beta0_grid_min <- -1.5
+
+#beta1_grid_length <- 20
+beta1_grid_max <- 0
+beta1_grid_min <- -2.5
+
+#beta2_grid_length <- 20
+beta2_grid_max <- 0
+beta2_grid_min <- -3
+
+GOLAZO_A1A2_sim_results <- foreach(j=1:N, .combine = 'rbind',.packages = c("stats", "mvtnorm", "rBayesianOptimization"), .export = c("golazo", "pd.solve")) %dopar% {
+  
+  n <- nrow(train_data[[j]])
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(train_data[[j]])) 
+  
+  beta_optimise <- BayesianOptimization(
+      FUN = function(beta0, beta1, beta2){ebic_eval_two_networks_BayesOpt(n, R, A1, A2, beta0, beta1, beta2, ebic.gamma = ebic.gamma, edge.tol = edge.tol, tol = 1e-5)},
+      bounds = list(beta0 = c(beta0_grid_min, beta0_grid_max),
+                  beta1 = c(beta1_grid_min, beta1_grid_max),
+                  beta2 = c(beta2_grid_min, beta2_grid_max)),
+      init_grid_dt = list(beta0 = GLASSO_sim_results[j,1], 
+                          beta1 = 0,
+                          beta2 = 0,
+                          Value = -GLASSO_sim_results[j,2]),
+      init_points = 5,
+      n_iter = 20, ## 20
+      acq = "ucb", 
+      kernel = list(type = "exponential", power = 2),
+    )
+
+  
+  beta_GOLAZO_A1A2 <- beta_optimise$Best_Par
+  # JACK: Saving the EBIC 
+  ebic_eval_optim_GOLAZO_A1A2 <- - beta_optimise$Best_Value
+  
+  #### Using the optimal beta0 ##
+  # U <- exp(beta0 + beta1*A1 + beta2*A2) 
+  U <- exp(beta_GOLAZO_A1A2[1] + beta_GOLAZO_A1A2[2]*A1 + beta_GOLAZO_A1A2[3]*A2) 
+  
+  ###################################
+  # we are now ready to run GOLAZO and output the optimal K
+  diag(U) <- 0
+  
+  res <- golazo(R, -U, U, tol = 1e-5, verbose=FALSE)
+  #Theta_hat_GOLAZO_A1A2_full <- round(res$K, round.tol)  
+  Rho_hat_GOLAZO_A1A2 <- threshold(cov2cor(res$K), edge.tol)
+
+  #out-of-sample log-likelihood
+  n_test <- nrow(test_data[[j]])
+  
+  out_sample_llh_GOLAZO_A1A2 <- 1/n_test*sum(dmvnorm(test_data[[j]], mean = rep(0, p), sigma = cor2cov(cov2cor(solve(Rho_hat_GOLAZO_A1A2)), diag(cov(train_data[[j]]))), log = TRUE))
+  
+  #cat("fold", j, "done", "\n")
+  c(beta_GOLAZO_A1A2, ebic_eval_optim_GOLAZO_A1A2, out_sample_llh_GOLAZO_A1A2)
+
+}
+
+
+```
+
+## Analysis
+
+```{r GOLAZO_A1A2_diag, include=TRUE,echo=TRUE, eval = TRUE,cache=FALSE,  error = TRUE}
+
+GOLAZO_A1A2_sim_results
+
+mean(GOLAZO_A1A2_sim_results[,4])
+mean(GOLAZO_A1A2_sim_results[,5])
+
+```
+
+# Full Comparison {.tabset}
+
+```{r full_comparison, include=TRUE,echo=TRUE, eval = TRUE, cache=FALSE,  error = TRUE}
+
+mean(GLASSO_sim_results[,3])
+mean(GOLAZO_A1_sim_results[,4])
+mean(GOLAZO_A2_sim_results[,4])
+mean(GOLAZO_A1A2_sim_results[,5])
+
+GLASSO_sim_results[,2]
+GOLAZO_A1_sim_results[,3]
+GOLAZO_A2_sim_results[,3]
+GOLAZO_A1A2_sim_results[,4]
+
+GLASSO_sim_results[,1]
+GOLAZO_A1_sim_results[,1]
+GOLAZO_A1_sim_results[,2]
+GOLAZO_A2_sim_results[,1]
+GOLAZO_A2_sim_results[,2]
+GOLAZO_A1A2_sim_results[,1]
+GOLAZO_A1A2_sim_results[,2]
+GOLAZO_A1A2_sim_results[,3]
+
+mean(GLASSO_sim_results[,3])*round(nrow(stock_trans)/N_folds)
+mean(GOLAZO_A1_sim_results[,4])*round(nrow(stock_trans)/N_folds)
+mean(GOLAZO_A2_sim_results[,4])*round(nrow(stock_trans)/N_folds)
+mean(GOLAZO_A1A2_sim_results[,5])*round(nrow(stock_trans)/N_folds)
+
+GLASSO_sim_results[,3]
+GOLAZO_A1_sim_results[,4]
+GOLAZO_A2_sim_results[,4]
+GOLAZO_A1A2_sim_results[,5]
+
+sqrt(var(GLASSO_sim_results[,3]))/sqrt(N)
+sqrt(var(GOLAZO_A1_sim_results[,4]))/sqrt(N)
+sqrt(var(GOLAZO_A2_sim_results[,4]))/sqrt(N)
+sqrt(var(GOLAZO_A1A2_sim_results[,5]))/sqrt(N)
+
+```
+
+
+
+# EBIC-GAMMA = 0.5
+
+## Hyparameters
+
+
+```{r hyperparameters_0.5, include=TRUE,echo=TRUE, eval = TRUE, cache=FALSE}
+
+ebic.gamma <- 0.5           # set to zero to get BIC
+edge.tol <-  1e-6         # be consistent with GLASSO+EBIC method
+
+```
+
+# GLASSO {.tabset}
+
+## Inference
+
+```{r GLASSO_run_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE, error = TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta0_GLASSO <-rep(NA, N)
+#beta0_grid_length <- 20
+#beta0_grid_min <- -3
+
+#beta0_grid_max <- -0.5
+#beta0_grid_min <- -2
+
+beta0_grid_max <- 1
+beta0_grid_min <- -2
+
+
+#for(j in 1:N){
+GLASSO_sim_results <- foreach(j=1:N, .combine = 'rbind', .packages = c("stats", "mvtnorm", "rBayesianOptimization"), .export = c("golazo", "pd.solve")) %dopar% {
+  
+  n <- nrow(train_data[[j]])
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(train_data[[j]]))  
+  
+  ## BayesOpt ##
+  beta_optimise <- BayesianOptimization(
+    FUN = function(beta0){ebic_eval_BayesOpt(n, R, beta0, ebic.gamma = ebic.gamma, edge.tol = edge.tol, tol = 1e-6)},
+    bounds = list(beta0 = c(beta0_grid_min, min(beta0_grid_max, beta0_max_GLASSO(R)))),
+    init_points = 5,
+    n_iter = 10, ## 7 evals vs 20/5
+    acq = "ucb", 
+    kernel = list(type = "exponential", power = 2),
+  )
+
+  
+  beta0_GLASSO <- beta_optimise$Best_Par
+  # JACK: Saving the EBIC 
+  ebic_eval_optim_GLASSO <- - beta_optimise$Best_Value
+  
+  #### Using the optimal beta0 ##
+  GraphicalModel <- golazo (R, L = exp(beta0_GLASSO) * L, U =exp(beta0_GLASSO)* U, tol = 1e-6, verbose=FALSE)
+  
+  #Theta_hat_GLASSO <- round(GraphicalModel$K, round.tol)   
+  Rho_hat_GLASSO <- threshold(cov2cor(GraphicalModel$K), edge.tol)
+  
+  #out-of-sample log-likelihood
+  n_test <- nrow(test_data[[j]])
+  
+  out_sample_llh_GLASSO <- 1/n_test*sum(dmvnorm(test_data[[j]], mean = rep(0, p), sigma = cor2cov(cov2cor(solve(Rho_hat_GLASSO)), diag(cov(train_data[[j]]))), log = TRUE))
+  
+  #cat("fold", j, "done", "\n")
+  c(beta0_GLASSO, ebic_eval_optim_GLASSO, out_sample_llh_GLASSO)
+
+}
+```
+
+## Analysis
+
+```{r GLASSO_diag_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, error = TRUE}
+
+GLASSO_sim_results
+
+mean(GLASSO_sim_results[,2])
+mean(GLASSO_sim_results[,3])
+
+```
+
+
+# Motivtaing Plots {.tabset}
+
+## Economic (A1)
+
+```{r Theta_vs_A1_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+A1 <- standardise_network_matrix_tri(E_pears)
+diag(A1) <- 0
+
+```
+
+## Policy (A2)
+
+```{r Theta_vs_A2_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+
+A2 <- standardise_network_matrix_tri(P_pears)
+diag(A2) <- 0
+
+```
+
+
+# GOLAZO - Economic (A1) {.tabset}
+
+## Inference
+
+```{r GOLAZO_A1_0.5, include=TRUE,echo=TRUE, eval=TRUE, cache=TRUE, error = TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta_GOLAZO_A1_full <- matrix(NA, nrow = N, ncol = 2)
+
+#beta0_grid_length <- 20
+#beta0_grid_max <- 4
+#beta0_grid_min <- -1
+beta0_grid_max <- 9.5
+beta0_grid_min <- 4
+
+#beta1_grid_length <- 20
+beta1_grid_max <- -3
+beta1_grid_min <- -7
+
+GOLAZO_A1_sim_results <- foreach(j=1:N, .combine = 'rbind',.packages = c("stats", "mvtnorm", "rBayesianOptimization"), .export = c("golazo", "pd.solve")) %dopar% {
+  
+  n <- nrow(train_data[[j]])
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(train_data[[j]])) 
+  
+  ## To deal with Quadprog failing ##
+  beta_optimise <- NA
+  beta_optimise <- BayesianOptimization(
+      FUN = function(beta0, beta1){ebic_eval_network_BayesOpt(n, R, A1, beta0, beta1, ebic.gamma = ebic.gamma, edge.tol = edge.tol, tol = 1e-5)},
+      bounds = list(beta0 = c(beta0_grid_min, beta0_grid_max),
+                  beta1 = c(beta1_grid_min, beta1_grid_max)),
+      init_grid_dt = list(beta0 = GLASSO_sim_results[j,1], 
+                          beta1 = 0,
+                          Value = -GLASSO_sim_results[j,2]),
+      init_points = 5,
+      n_iter = 15, ## 15
+      acq = "ucb", 
+      kernel = list(type = "exponential", power = 2),
+  )
+
+  
+  beta_GOLAZO_A1 <- beta_optimise$Best_Par
+  # JACK: Saving the EBIC 
+  ebic_eval_optim_GOLAZO_A1 <- - beta_optimise$Best_Value
+  
+  #### Using the optimal beta0 ##
+  # U <- exp(beta0 + beta1*A1) 
+  U <- exp(beta_GOLAZO_A1[1] + beta_GOLAZO_A1[2]*A1) 
+  
+  ###################################
+  # we are now ready to run GOLAZO and output the optimal K
+  diag(U) <- 0
+  
+  res <- golazo(R, -U, U, tol = 1e-5, verbose=FALSE)
+  #Theta_hat_GOLAZO_A1_full <- round(res$K, round.tol)  
+  Rho_hat_GOLAZO_A1 <- threshold(cov2cor(res$K), edge.tol)
+  
+  #out-of-sample log-likelihood
+  n_test <- nrow(test_data[[j]])
+  
+  out_sample_llh_GOLAZO_A1 <- 1/n_test*sum(dmvnorm(test_data[[j]], mean = rep(0, p), sigma = cor2cov(cov2cor(solve(Rho_hat_GOLAZO_A1)), diag(cov(train_data[[j]]))), log = TRUE))
+  
+  #cat("fold", j, "done", "\n")
+  c(beta_GOLAZO_A1, ebic_eval_optim_GOLAZO_A1, out_sample_llh_GOLAZO_A1)
+
+}
+```
+
+## Analysis
+
+```{r GOLAZO_A1_diag_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, error = TRUE}
+
+GOLAZO_A1_sim_results
+
+mean(GOLAZO_A1_sim_results[,3])
+mean(GOLAZO_A1_sim_results[,4])
+
+```
+
+
+
+# GOLAZO - Policy (A2) {.tabset}
+
+## Inference
+
+```{r GOLAZO_A2_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE, error = TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta_GOLAZO_A2_full <- matrix(NA, nrow = N, ncol = 2)
+
+#beta0_grid_length <- 20
+#beta0_grid_max <- 2
+#beta0_grid_min <- -1
+#beta0_grid_max <- 4
+#beta0_grid_min <- -1
+beta0_grid_max <- 3
+beta0_grid_min <- 0
+
+#beta2_grid_length <- 20
+beta2_grid_max <- -1.5
+beta2_grid_min <- -3.5
+
+
+GOLAZO_A2_sim_results <- foreach(j=1:N, .combine = 'rbind',.packages = c("stats", "mvtnorm", "rBayesianOptimization"), .export = c("golazo", "pd.solve")) %dopar% {
+  
+  n <- nrow(train_data[[j]])
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(train_data[[j]])) 
+  
+  beta_optimise <- BayesianOptimization(
+      FUN = function(beta0, beta2){ebic_eval_network_BayesOpt(n, R, A2, beta0, beta2, ebic.gamma = ebic.gamma, edge.tol = edge.tol, tol = 1e-5)},
+      bounds = list(beta0 = c(beta0_grid_min, beta0_grid_max),
+                  beta2 = c(beta2_grid_min, beta2_grid_max)),
+      init_grid_dt = list(beta0 = GLASSO_sim_results[j,1], 
+                          beta2 = 0,
+                          Value = -GLASSO_sim_results[j,2]),
+      init_points = 5,
+      n_iter = 15, ## 15
+      acq = "ucb", 
+      kernel = list(type = "exponential", power = 2),
+    )
+
+  
+  beta_GOLAZO_A2 <- beta_optimise$Best_Par
+  # JACK: Saving the EBIC 
+  ebic_eval_optim_GOLAZO_A2 <- - beta_optimise$Best_Value
+  
+  #### Using the optimal beta0 ##
+  # U <- exp(beta0 + beta1*A2) 
+  U <- exp(beta_GOLAZO_A2[1] + beta_GOLAZO_A2[2]*A2) 
+  
+  ###################################
+  # we are now ready to run GOLAZO and output the optimal K
+  diag(U) <- 0
+  
+  res <- golazo(R, -U, U, tol = 1e-5, verbose=FALSE)
+  #Theta_hat_GOLAZO_A2_full <- round(res$K, round.tol)  
+  Rho_hat_GOLAZO_A2 <- threshold(cov2cor(res$K), edge.tol)
+  
+  #out-of-sample log-likelihood
+  n_test <- nrow(test_data[[j]])
+  
+  out_sample_llh_GOLAZO_A2 <- 1/n_test*sum(dmvnorm(test_data[[j]], mean = rep(0, p), sigma = cor2cov(cov2cor(solve(Rho_hat_GOLAZO_A2)), diag(cov(train_data[[j]]))), log = TRUE))
+  
+  #cat("fold", j, "done", "\n")
+  c(beta_GOLAZO_A2, ebic_eval_optim_GOLAZO_A2, out_sample_llh_GOLAZO_A2)
+
+}
+```
+
+## Analysis
+
+```{r GOLAZO_A2_diag_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, error = TRUE,  error = TRUE}
+
+GOLAZO_A2_sim_results
+
+mean(GOLAZO_A2_sim_results[,3])
+mean(GOLAZO_A2_sim_results[,4])
+
+```
+
+
+# GOLAZO - Economic & Policy (A1 & A2) {.tabset}
+
+## Inference
+
+```{r GOLAZO_A1A2_0.5, include=TRUE,echo=TRUE, eval = TRUE,cache=TRUE,  error = TRUE}
+
+L <- matrix(-1,p,p)    
+U <- matrix (1,p,p)
+diag(U) <- diag(L) <- 0
+
+beta_GOLAZO_A1A2_full <- matrix(NA, nrow = N, ncol = 3)
+
+#beta0_grid_length <- 20
+#beta0_grid_max <- 3
+#beta0_grid_min <- 0
+beta0_grid_max <- 13
+beta0_grid_min <- 8
+
+#beta1_grid_length <- 20
+beta1_grid_max <- -2
+beta1_grid_min <- -7.5
+
+#beta2_grid_length <- 20
+beta2_grid_max <- -2.5
+beta2_grid_min <- -8.5
+
+GOLAZO_A1A2_sim_results <- foreach(j=1:N, .combine = 'rbind',.packages = c("stats", "mvtnorm", "rBayesianOptimization"), .export = c("golazo", "pd.solve")) %dopar% {
+  
+  n <- nrow(train_data[[j]])
+  
+  #### Estimating lambda ####
+  R <- stats::cov2cor(cov(train_data[[j]])) 
+  
+  beta_optimise <- BayesianOptimization(
+      FUN = function(beta0, beta1, beta2){ebic_eval_two_networks_BayesOpt(n, R, A1, A2, beta0, beta1, beta2, ebic.gamma = ebic.gamma, edge.tol = edge.tol, tol = 1e-5)},
+      bounds = list(beta0 = c(beta0_grid_min, beta0_grid_max),
+                  beta1 = c(beta1_grid_min, beta1_grid_max),
+                  beta2 = c(beta2_grid_min, beta2_grid_max)),
+      init_grid_dt = list(beta0 = GLASSO_sim_results[j,1], 
+                          beta1 = 0,
+                          beta2 = 0,
+                          Value = -GLASSO_sim_results[j,2]),
+      init_points = 5,
+      n_iter = 20, ## 20
+      acq = "ucb", 
+      kernel = list(type = "exponential", power = 2),
+    )
+
+  
+  beta_GOLAZO_A1A2 <- beta_optimise$Best_Par
+  # JACK: Saving the EBIC 
+  ebic_eval_optim_GOLAZO_A1A2 <- - beta_optimise$Best_Value
+  
+  #### Using the optimal beta0 ##
+  # U <- exp(beta0 + beta1*A1 + beta2*A2) 
+  U <- exp(beta_GOLAZO_A1A2[1] + beta_GOLAZO_A1A2[2]*A1 + beta_GOLAZO_A1A2[3]*A2) 
+  
+  ###################################
+  # we are now ready to run GOLAZO and output the optimal K
+  diag(U) <- 0
+  
+  res <- golazo(R, -U, U, tol = 1e-5, verbose=FALSE)
+  #Theta_hat_GOLAZO_A1A2_full <- round(res$K, round.tol)  
+  Rho_hat_GOLAZO_A1A2 <- threshold(cov2cor(res$K), edge.tol)
+
+  #out-of-sample log-likelihood
+  n_test <- nrow(test_data[[j]])
+  
+  out_sample_llh_GOLAZO_A1A2 <- 1/n_test*sum(dmvnorm(test_data[[j]], mean = rep(0, p), sigma = cor2cov(cov2cor(solve(Rho_hat_GOLAZO_A1A2)), diag(cov(train_data[[j]]))), log = TRUE))
+  
+  #cat("fold", j, "done", "\n")
+  c(beta_GOLAZO_A1A2, ebic_eval_optim_GOLAZO_A1A2, out_sample_llh_GOLAZO_A1A2)
+
+}
+```
+
+## Analysis
+
+```{r GOLAZO_A1A2_diag_0.5, include=TRUE,echo=TRUE, eval = TRUE,cache=FALSE,  error = TRUE}
+
+GOLAZO_A1A2_sim_results
+
+mean(GOLAZO_A1A2_sim_results[,4])
+mean(GOLAZO_A1A2_sim_results[,5])
+
+```
+
+# Full Comparison {.tabset}
+
+```{r full_comparison_0.5, include=TRUE,echo=TRUE, eval = TRUE, cache=FALSE,  error = TRUE}
+
+mean(GLASSO_sim_results[,3])
+mean(GOLAZO_A1_sim_results[,4])
+mean(GOLAZO_A2_sim_results[,4])
+mean(GOLAZO_A1A2_sim_results[,5])
+
+GLASSO_sim_results[,2]
+GOLAZO_A1_sim_results[,3]
+GOLAZO_A2_sim_results[,3]
+GOLAZO_A1A2_sim_results[,4]
+
+GLASSO_sim_results[,1]
+GOLAZO_A1_sim_results[,1]
+GOLAZO_A1_sim_results[,2]
+GOLAZO_A2_sim_results[,1]
+GOLAZO_A2_sim_results[,2]
+GOLAZO_A1A2_sim_results[,1]
+GOLAZO_A1A2_sim_results[,2]
+GOLAZO_A1A2_sim_results[,3]
+
+mean(GLASSO_sim_results[,3])*round(nrow(stock_trans)/N_folds)
+mean(GOLAZO_A1_sim_results[,4])*round(nrow(stock_trans)/N_folds)
+mean(GOLAZO_A2_sim_results[,4])*round(nrow(stock_trans)/N_folds)
+mean(GOLAZO_A1A2_sim_results[,5])*round(nrow(stock_trans)/N_folds)
+
+GLASSO_sim_results[,3]
+GOLAZO_A1_sim_results[,4]
+GOLAZO_A2_sim_results[,4]
+GOLAZO_A1A2_sim_results[,5]
+
+sqrt(var(GLASSO_sim_results[,3]))/sqrt(N)
+sqrt(var(GOLAZO_A1_sim_results[,4]))/sqrt(N)
+sqrt(var(GOLAZO_A2_sim_results[,4]))/sqrt(N)
+sqrt(var(GOLAZO_A1A2_sim_results[,5]))/sqrt(N)
+
+```

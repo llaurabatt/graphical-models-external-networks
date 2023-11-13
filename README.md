@@ -1,6 +1,6 @@
 # Graphical model inference with external network data
 
-This repository contains all of the code associated with the paper ''Graphical model inference with external network data''  Jewson, Li, Battaglia, Hansen, Rossell, and Zwiernik (2022) available at https://arxiv.org/abs/2210.11107
+This repository contains all of the code associated with the paper ''Graphical model inference with external network data''  Jewson, Li, Battaglia, Hansen, Rossell, and Zwiernik (2022) available at ..........
 
 This repository is organised into three sections further explained below
 
@@ -18,7 +18,7 @@ The `Simulations` folder contains the Jupyter notebook `simulate_data.ipynb` tha
 
 ### COVID
 
-The `COVID` folder contains `COVID19 data preprocessing.Rmd` which implements the data collection and combination outlined in Sections B.1 and B.2, the linear modelling for the mean described in Section B.3, and the goodness-of-fit checks described in Section B.4. 
+The `COVID` folder contains `COVID19 data preprocessing allCounties.Rmd` and `COVID19 data preprocessing allClustered.Rmd` which implements the data collection and combination outlined in Sections B.1 and B.2, the linear modelling for the mean described in Section B.3, and the goodness-of-fit checks described in Section B.4. 
 
 The folder `Raw Data` contains the raw data files required to run this analysis. 
 
@@ -26,15 +26,26 @@ The folder `Raw Data` contains the raw data files required to run this analysis.
 
 The folder `Pre-processed Data` contains the output files of our pre-processing, those files required to estimate our graphical models.
 
+#### Clustering the conties
+
+I order to reproduce our clustering of the 
++ COVID19 data preprocessing allCounties.Rmd reads in the raw data for all counties in the US and preprocess the data read to be clusterd into meta-counties
++ clustering_algo_flights2.ipynb clusters the data data into meta counties
++ COVID19 data preprocessing allClustered.Rmd reads in the clustered data and produces the residuals and network matricies
+
+#### Flight Data
+
+For full details on the data collection for the Flight Passenger Flow network see https://github.com/unstructured-data/airtravel-data
+
 ### Stock
 
-The `Stock` folder contains `Stock data preprocessing.Rmd` which implements the data collection and combination outlined in Sections C.1 and C.2, the linear modelling for the mean described in Section C.3, and the goodness-of-fit checks described in Section C.4. 
+The `Stock` folder contains `Stock_data_preprocessing_final.Rmd` which implements the data collection and combination outlined in Sections C.1 and C.2, the linear modelling for the mean described in Section C.3, and the goodness-of-fit checks described in Section C.4. 
 
 The folder `Raw Data` contains the raw data files required to run this analysis. 
 
 The folder `Pre-processed Data` contains the output files of our pre-processing, those files required to estimate our graphical models.
 
-## Network GLASSO 
+## network GLASSO 
 
 The `Network_GLASSO` folder contains `.Rmd` files for undertaking the network GLASSO analyses as explained in Sections 3.2 and 4.1.
 
@@ -48,9 +59,9 @@ should this for any reason fail, the file `GOLAZO_function.R` contains the requi
 
 The file `Network_GLASSO_Simulations` implements the GLASSO and network GLASSO for the different network matrices for the simulated experiments
 
-`COVID_Network_GLASSO_inSample.Rmd` implements the full sample analysis for the COVID data, while `COVID_Network_GLASSO_outSample_cv10` undertakes the 10-fold cross-validation used to provide the test set log-likelihoods in Table 2.
+`COVID_Frequentist_GLASSO_GOLAZO_inSample_allClustered_BayesOpt.Rmd` implements the full sample analysis for the COVID data, while `COVID_Frequentist_GLASSO_GOLAZO_outSample_cv10_allClustered_BayesOpt.Rmd` undertakes the 10-fold cross-validation used to provide the test set log-likelihoods in Table 2.
 
-`Stock_Network_GLASSO_inSample.Rmd` and `Stock_Network_GLASSO_outSample_cv10` undertake the equivalent analyse for the stock market data.
+`STOCK_Frequentist_GLASSO_GOLAZO_inSample_allSP_BayesOpt.Rmd` and `STOCK_Frequentist_GLASSO_GOLAZO_outSample_cv10_allSP_BayesOpt.Rmd` undertake the equivalent analyse for the stock market data.
 
 ## Network spike-and-slab
 
@@ -62,7 +73,7 @@ The file `priorSpecification_NetworkSS.Rmd` provides code to elicit the network 
 
 The folder `Stan` provides the code to implement the network spike-and-slab in Stan
 
-The file `GOLAZO_SS_stan_timings.Rmd` implements the timing comparison presented in Section D of implementing the network spike-and-slab in Stan and also times the implementation of the network GLASSO
+The file `stan_Network_SS_timings.Rmd` implements the timing comparison presented in Section D of implementing the network spike-and-slab in Stan and also times the implementation of the network GLASSO
 
 ### numpyro 
 

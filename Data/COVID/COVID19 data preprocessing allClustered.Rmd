@@ -1,0 +1,318 @@
+---
+title: "COVID19 Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+This R Notebook prepares the clustered COVID-19 data 
+
+Set Directory of this folder 
+
+```{R}
+
+data_dir <- '/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/paper_code_github_NEW/Data/COVID/'
+
+```
+
+#  Data preprocessing
+Load packages
+
+```{R}
+library(readxl)
+library(readr)
+library(reshape)
+library(tidyverse)
+library(geosphere)
+library(dplyr)
+library(data.table)
+library(tidyquant)
+library(plm)
+#library(maditr)
+
+library("mgcv")
+
+library(stargazer)
+```
+
+Loading the clustered data
+
+
+```{R}
+setwd(data_dir)
+myfinal_daily <- read.csv(file = paste("COVID_332_counties_meta_agg_pruned", ".csv", sep = ""))
+
+length(unique(myfinal_daily$FIPS)) # Doesn't exist
+length(unique(myfinal_daily$Date)) # 679
+length(unique(myfinal_daily$ID_metacounty)) #332 # 629 # 496
+
+myfinal_daily <- myfinal_daily[,-1]
+
+myfinal_daily$log_popdensi_sk <- log(myfinal_daily$density_sk)   
+
+myfinal_daily$per10000_daily_confirmed <- (myfinal_daily$daily_confirmed / myfinal_daily$Population ) * 10000   ## per 10,000 daily confirmed case
+
+myfinal_daily$per10000_daily_confirmed <- ifelse(myfinal_daily$per10000_daily_confirmed < 0, 0, myfinal_daily$per10000_daily_confirmed)# replace negative values by 0
+
+myfinal_daily$Date <- as.Date(myfinal_daily$Date)
+
+head(myfinal_daily)
+```
+
+
+Convert daily data to weekly data
+
+```{R}
+str(myfinal_daily)
+col_order <- c("ID_metacounty", "Date", "Population", "log_popdensi_sk",
+             "per10000_daily_confirmed",  "per_daily_vaccinated", "T",
+               "ContainmentHealthIndex1")
+
+myfinal_daily1 <- myfinal_daily[, col_order]
+
+## from FIPS to ContainmentHealthIndex1, break to Mean of weekly data
+myfinal_weekly <- myfinal_daily1 %>%
+  group_by(ID_metacounty) %>%
+  arrange(ID_metacounty, Date) %>%
+  tq_transmute(select     = Population:ContainmentHealthIndex1,
+               mutate_fun = apply.weekly,
+               FUN        =  mean)            
+
+## generate weekly data
+myfinal_weekly$weekly_confirmed <- (myfinal_weekly$per10000_daily_confirmed )* 7   
+myfinal_weekly$weekly_vaccinated <- (myfinal_weekly$per_daily_vaccinated)* 7
+
+
+## generate cumulative vaccination
+myfinal_weekly <-  myfinal_weekly %>% 
+  group_by(ID_metacounty) %>% 
+  arrange(ID_metacounty, Date)%>%
+  mutate(weekly_cum_vaccinated = cumsum(weekly_vaccinated))        
+
+
+```
+
+Plot the weekly confirmed COVID data
+
+```{R}
+
+ggplot(data = myfinal_weekly, 
+       aes(x = Date, y = weekly_confirmed, group = ID_metacounty)) +
+  geom_line(aes(col = ID_metacounty)) +
+  labs(x = "date",  y = "per_week_confirmed") +
+  theme(legend.position = "none") +
+  scale_x_date(date_breaks = "1 month") +
+  theme(axis.text.x=element_text(angle=60, hjust=1))                              ## The Plot of Weekly Confirmed 
+```
+
+Plot the Cumulative Weekly Vaccinated data
+
+```{R}
+ggplot(data = myfinal_weekly, 
+       aes(x = Date, y = weekly_cum_vaccinated, group = ID_metacounty)) +
+  geom_line(aes(col = ID_metacounty)) +
+  labs(x = "date",  y = "sum_per_vaccinated") +
+  theme(legend.position = "none") +
+  scale_x_date(date_breaks = "1 month") +
+  theme(axis.text.x=element_text(angle=60, hjust=1))                               ## The Plot of Cumulative Weekly Vaccinated
+```
+
+Create the log of weekly confirmed data
+
+```{R}
+myfinal_weekly$log_weekly_confirmed <- log(1+ myfinal_weekly$weekly_confirmed) 
+```
+
+Standardise all data
+
+```{R}
+st_myfinal_weekly <- myfinal_weekly %>% 
+  ungroup() %>% 
+  mutate_at(c("log_popdensi_sk", "ContainmentHealthIndex1", "T",
+              #"weekly_confirmed", "weekly_cum_vaccinated"), 
+              "log_weekly_confirmed", "weekly_cum_vaccinated"), 
+            ~(scale(.) %>% as.vector), na.rm = TRUE)                            ## standardise 
+```
+
+# Regression Analysis
+
+Histogram of the COVID data
+
+```{R}
+options(scipen=4)
+theme_set(theme_bw())
+hist(st_myfinal_weekly$weekly_confirmed, 
+     xlab = "Per10000 population weekly Confirmed Case (Standardized) ",
+     main = "Hist of Per10000 Weekly_Confirmed Case ")
+```
+
+
+Plot the weekly confirmed COVID data 
+ 
+```{R}
+ggplot(data = st_myfinal_weekly, 
+       aes(x = Date, y = weekly_confirmed, group = ID_metacounty)) +
+  geom_line(aes(col = ID_metacounty)) +
+  labs(x = "date",  y = "Per 10000 weekly Confirmed Case (standerdized)") +
+  theme(legend.position = "none") +  
+  scale_x_date(date_breaks = "1 month") +
+  theme(axis.text.x=element_text(angle=60, hjust=1)) 
+```
+
+Create lag variable mamually
+
+```{R}
+mydf <- data.frame(st_myfinal_weekly)
+mydf$log_weekly_confirmedlag1 <- c(NA, mydf$log_weekly_confirmed[-nrow(mydf)])
+
+nn <- unique(mydf$ID_metacounty)
+for (i in 1:length(nn)) {
+  sel= which(mydf$ID_metacounty == nn[i])
+  mydf[sel[1], 'log_weekly_confirmedlag1']= NA
+}
+
+head(mydf)
+mydf <- mydf[rowSums(is.na(mydf)) == 0, ] 
+```
+
+### Model1: regression analysis without AR1 term
+
+```{R}
+
+fe_model1 <- gam(log_weekly_confirmed ~ log_popdensi_sk + s(T)  + 
+                   weekly_cum_vaccinated + ContainmentHealthIndex1 + factor(Date),
+                 data = mydf)
+
+summary(fe_model1)
+```
+
+Residual ACF and PACF for model without AR terms
+
+```{R}
+mydf$res <- residuals(fe_model1)
+
+dataacf <- tapply(mydf$res, INDEX= mydf$ID_metacounty, FUN=acf, pl=FALSE)   #Obtain ACF for each county
+datapacf <- tapply(mydf$res, INDEX= mydf$ID_metacounty, FUN=pacf, pl=FALSE) #Obtain PACT for each county
+
+r <- pr <- matrix(NA, nrow=length(dataacf), ncol=5)  #Format as matrix for easy plotting
+for (i in 1:length(dataacf)) {
+  r[i,] <- dataacf[[i]][[1]][2:6,,]  #start at 2, first element stores 0 order correlation
+  pr[i,] <- datapacf[[i]][[1]][1:5,,]
+}
+
+plot(density(r[,1]), xlim=c(-0.5,1), ylim = c(0,5), main='acf_residuals', xlab='Autocorrelation', cex.axis=1.3, cex.lab=1.4)
+lines(density(r[,2]), col=2)
+lines(density(r[,3]), col=3)
+lines(density(r[,4]), col=4)
+lines(density(r[,5]), col=5)
+legend('topleft', c('Order 1','Order 2','Order 3','Order 4','Order 5'), lty=1, lwd=2, col=1:5, cex=1.2)
+
+
+plot(density(pr[,1]), xlim=c(-0.5,1), ylim = c(0,5), main='pacf_residuals', xlab='Partial autocorrelation', cex.axis=1.3, cex.lab=1.4)
+lines(density(pr[,2]), col=2)
+lines(density(pr[,3]), col=3)
+lines(density(pr[,4]), col=4)
+lines(density(pr[,5]), col=5)
+legend('topleft', c('Order 1','Order 2','Order 3','Order 4','Order 5'), lty=1, lwd=2, col=1:5, cex=1.2)
+```
+
+### Model 2: regression analysis with AR1 term
+
+```{R}
+fe_model2 <- gam(log_weekly_confirmed ~ log_weekly_confirmedlag1 +
+                   log_popdensi_sk + s(T)  + weekly_cum_vaccinated +
+                   ContainmentHealthIndex1 + factor(Date), 
+                 data = mydf)
+
+summary(fe_model2)
+#stargazer(fe_model2, omit = c("date", "T"), type="text",title="Model With AR1 Term")
+```
+
+Residual ACF and PACF for model with AR1 term
+ 
+```{R}
+mydf$res <- residuals(fe_model2)
+
+dataacf <- tapply(mydf$res, INDEX= mydf$ID_metacounty, FUN=acf, pl=FALSE)   #Obtain ACF for each county
+datapacf <- tapply(mydf$res, INDEX= mydf$ID_metacounty, FUN=pacf, pl=FALSE) #Obtain PACT for each county
+
+r <- pr <- matrix(NA, nrow=length(dataacf), ncol=5)  #Format as matrix for easy plotting
+for (i in 1:length(dataacf)) {
+  r[i,] <- dataacf[[i]][[1]][2:6,,]  #start at 2, first element stores 0 order correlation
+  pr[i,] <- datapacf[[i]][[1]][1:5,,]
+}
+
+
+
+plot(density(r[,1]), xlim=c(-0.5,1), ylim=c(0,5),  xlab='Autocorrelation', cex.axis=1.3, cex.lab=1.4, main = "acf_residuals_AR1")
+lines(density(r[,2]), col=2)
+lines(density(r[,3]), col=3)
+lines(density(r[,4]), col=4)
+lines(density(r[,5]), col=5)
+legend('topleft', c('Order 1','Order 2','Order 3','Order 4','Order 5'), lty=1, lwd=2, col=1:5, cex=1.2)
+
+
+plot(density(pr[,1]), xlim=c(-0.5,1), ylim=c(0,5), main='pacf_residuals_ar1', xlab='Partial autocorrelation', cex.axis=1.3, cex.lab=1.4)
+lines(density(pr[,2]), col=2)
+lines(density(pr[,3]), col=3)
+lines(density(pr[,4]), col=4)
+lines(density(pr[,5]), col=5)
+legend('topleft', c('Order 1','Order 2','Order 3','Order 4','Order 5'), lty=1, lwd=2, col=1:5, cex=1.2)
+```
+
+residual VS covariates in Model 2
+ 
+```{R}
+plot(x = fitted.values(fe_model2), y = residuals(fe_model2), main= "Model2: Fitted vs Residual")
+lines(lowess(fitted.values(fe_model2), residuals(fe_model2)), col='red')
+
+
+plot(x= mydf$T, y = residuals(fe_model2))
+lines(lowess(mydf$T, residuals(fe_model2)), col='red')
+
+
+plot(x= mydf$log_popdensi_sk, y = residuals(fe_model2))
+lines(lowess(mydf$log_popdensi_sk, residuals(fe_model2)), col='red')
+
+
+plot(x= mydf$weekly_cum_vaccinated, y = residuals(fe_model2))
+lines(lowess(mydf$weekly_cum_vaccinated, residuals(fe_model2)), col='red')
+
+
+plot(x= mydf$ContainmentHealthIndex1, y = residuals(fe_model2))
+lines(lowess(mydf$ContainmentHealthIndex1, residuals(fe_model2)), col='red')
+```
+
+Put residuals into a matrix
+
+```{R}
+nn <- unique(mydf$ID_metacounty)
+ncounty <- length(nn)
+covid1 <- lapply(1:ncounty, function(i) mydf[mydf$ID_metacounty==nn[i], 'res'])
+covid1 <- do.call(cbind, covid1)
+
+dim(covid1)     #check: 99 counties, 97 observations (weeks) per county
+```
+
+Histogram and qqplot of residuals 
+
+```{R}
+
+hist(covid1, xlab = "residual of COVID", main = "hist of COVID residual", probability = TRUE)
+
+qqnorm(covid1, main = "Q-Q Plot of COVID residual")
+qqline(covid1, lwd = 3)
+
+```
+
+Save data
+
+```{R}
+#write.csv(covid1, file = paste("COVID_629_meta", ".csv", sep = ""))
+setwd(data_dir)
+write.csv(covid1, file = paste("COVID_332_meta_pruned", ".csv", sep = ""))
+```
+
+
+
+

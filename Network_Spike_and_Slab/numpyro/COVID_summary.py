@@ -1,10 +1,10 @@
 # #%%
 """Main script for training the model."""
-# import debugpy
-# debugpy.listen(5678)
-# print('Waiting for debugger')
-# debugpy.wait_for_client()
-# print('Debugger attached')
+import debugpy
+debugpy.listen(5678)
+print('Waiting for debugger')
+debugpy.wait_for_client()
+print('Debugger attached')
 #%%
 # imports
 from absl import flags
@@ -87,10 +87,10 @@ outputs = {"NetworkSS_geo_sci":output_dict_ss_geo_sci }
 with open(FLAGS.mcmc1_path, 'rb') as fr:
     res_ss_geo_sci = pickle.load(fr)
 
-rhos = pd.DataFrame(res_ss_geo_sci['rho_lt'])
-rhos.to_csv(data_save_path + 'rho_lt_mcmc1.csv')
-del rhos
-print('rhos saved!')
+# rhos = pd.DataFrame(res_ss_geo_sci['rho_lt'])
+# rhos.to_csv(data_save_path + 'rho_lt_mcmc1.csv')
+# del rhos
+# print('rhos saved!')
 
 all_res = {"NetworkSS_geo_sci":res_ss_geo_sci}
 #%%
@@ -232,9 +232,19 @@ for i, res in all_res_2MCMC.items():
                                         w_spike=(1-w_slab))
         prob_slab_all.append(prob_slab)
     prob_slab_est = (jnp.array(prob_slab_all)).mean(0)    
+    
     nonzero_preds_5 = (prob_slab_est>0.5).astype(int)
+    nonzero_preds_5_mat = jnp.zeros((p,p))
+    nonzero_preds_5_mat = nonzero_preds_5_mat.at[tril_idx].set(nonzero_preds_5)
+    nonzero_preds_5_mat = pd.DataFrame(nonzero_preds_5_mat)
+    nonzero_preds_5_mat.to_csv(data_save_path + 'nonzero_preds_50_mat.csv')
+    
     nonzero_preds_95 = (prob_slab_est>0.95).astype(int)
-
+    nonzero_preds_95_mat = jnp.zeros((p,p))
+    nonzero_preds_95_mat = nonzero_preds_95_mat.at[tril_idx].set(nonzero_preds_95)
+    nonzero_preds_95_mat = pd.DataFrame(nonzero_preds_95_mat)
+    nonzero_preds_95_mat.to_csv(data_save_path + 'nonzero_preds_95_mat.csv')
+  
     Pos_5 = jnp.where(nonzero_preds_5 == True)[0].shape[0]
     Neg_5 = jnp.where(nonzero_preds_5 == False)[0].shape[0]
   

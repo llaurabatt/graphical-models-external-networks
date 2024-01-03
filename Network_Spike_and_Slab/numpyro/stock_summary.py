@@ -74,7 +74,7 @@ A_tril_arr = jnp.array([A[tril_idx] for A in A_list]) # (a, p, p)
 
 # 1MCMC
 output_dict_ss_E_P = {"eta0_0":[],"eta0_coefs":[], "eta1_0":[],"eta1_coefs":[], "eta2_0":[],"eta2_coefs":[],
-                    "w_slab":[], "mean_slab":[], "scale_slab":[],"Pos":[], "Neg":[], "Pos_95":[], "Neg_95":[],}
+                    "w_slab":[], "mean_slab":[], "scale_slab":[],"Pos":[], "Neg":[], "nonzero_preds_5":[], "Pos_95":[], "Neg_95":[],}
 
 
 outputs = {"NetworkSS_E_P":output_dict_ss_E_P }
@@ -160,13 +160,14 @@ if FLAGS.get_probs:
         prob_slab_est = (jnp.array(prob_slab_all)).mean(0)    
         nonzero_preds_5 = (prob_slab_est>0.5).astype(int)
         nonzero_preds_95 = (prob_slab_est>0.95).astype(int)
-
+ 
         Pos_5 = jnp.where(nonzero_preds_5 == True)[0].shape[0]
         Neg_5 = jnp.where(nonzero_preds_5 == False)[0].shape[0]
     
         Pos_95 = jnp.where(nonzero_preds_95 == True)[0].shape[0]
         Neg_95 = jnp.where(nonzero_preds_95 == False)[0].shape[0]
 
+        outputs[i]['nonzero_preds_5'].append(nonzero_preds_5)
         outputs[i]['Pos'].append(Pos_5)
         outputs[i]['Neg'].append(Neg_5)
         outputs[i]['Pos_95'].append(Pos_95)
@@ -197,7 +198,13 @@ with open(FLAGS.mcmc2_path, 'rb') as fr:
 # rhos = pd.DataFrame(mcmc2_ss_E_P['rho_lt'])
 # rhos.to_csv(data_save_path + 'rho_lt_mcmc2.csv')
 # del rhos
+rho_tril = pd.DataFrame(res_ss_E_P['rho_lt'].mean(0))
+rho_tril.to_csv(data_save_path + 'rho_lt_mean_mcmc1.csv')
+del rho_tril
 
+rho_tril = pd.DataFrame(mcmc2_ss_E_P['rho_lt'].mean(0))
+rho_tril.to_csv(data_save_path + 'rho_lt_mean_mcmc2.csv')
+del rho_tril
 
 all_res_2MCMC = {"NetworkSS_E_P":mcmc2_ss_E_P}
 for i, res in all_res_2MCMC.items():
@@ -230,7 +237,17 @@ for i, res in all_res_2MCMC.items():
         prob_slab_all.append(prob_slab)
     prob_slab_est = (jnp.array(prob_slab_all)).mean(0)    
     nonzero_preds_5 = (prob_slab_est>0.5).astype(int)
+    nonzero_preds_5_mat = jnp.zeros((p,p))
+    nonzero_preds_5_mat = nonzero_preds_5_mat.at[tril_idx].set(nonzero_preds_5)
+    nonzero_preds_5_mat = pd.DataFrame(nonzero_preds_5_mat)
+    nonzero_preds_5_mat.to_csv(data_save_path + 'nonzero_preds_50_mat.csv')
+    
     nonzero_preds_95 = (prob_slab_est>0.95).astype(int)
+    nonzero_preds_95_mat = jnp.zeros((p,p))
+    nonzero_preds_95_mat = nonzero_preds_95_mat.at[tril_idx].set(nonzero_preds_95)
+    nonzero_preds_95_mat = pd.DataFrame(nonzero_preds_95_mat)
+    nonzero_preds_95_mat.to_csv(data_save_path + 'nonzero_preds_95_mat.csv')
+  
 
     Pos_5 = jnp.where(nonzero_preds_5 == True)[0].shape[0]
     Neg_5 = jnp.where(nonzero_preds_5 == False)[0].shape[0]
@@ -493,7 +510,9 @@ for A_ix, (A_k, vals) in enumerate(A_P_ints_10.items()):
     densities_E_P_P.append(density)
     ax.plot(density+A_P_mids_10[A_ix], x_axis, alpha=0.3, c='gray')
     
-ax.scatter(A_tril_P, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
+# ax.scatter(A_tril_P, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
+colors = np.where(outputs_1MCMC['NetworkSS_E_P']['nonzero_preds_5'][0]==1,'red','black')
+ax.scatter(A_tril_P, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color=colors, facecolors='none', label='partial correlations')
 
 ax.set_xlim(-5.5, 3)
 ax.set_ylim(-0.2, 0.7)
@@ -523,8 +542,10 @@ for A_ix, (A_k, vals) in enumerate(A_E_ints_10.items()):
                                                            rho_lt=x) for x in x_axis]))
     densities_E_P_E.append(density)
     ax.plot(density+A_E_mids_10[A_ix], x_axis, alpha=0.3, c='gray')
-    
-ax.scatter(A_tril_E, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
+
+# ax.scatter(A_tril_E, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
+colors = np.where(outputs_1MCMC['NetworkSS_E_P']['nonzero_preds_5'][0]==1,'red','black')    
+ax.scatter(A_tril_E, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color=colors, facecolors='none', label='partial correlations')
 ax.set_xlim(-2.5, 4)
 ax.set_ylim(-0.2, 0.7)
 ax.set_xlabel('Economic Risks Similarity Index')

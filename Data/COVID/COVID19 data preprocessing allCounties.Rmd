@@ -1,0 +1,785 @@
+---
+title: "COVID19 Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+This R Notebook prepares the raw COVID-19 data for all counties in the US BEFORE they are clustered into meta-counties 
+
+Set Directory of this folder 
+
+```{R}
+
+data_dir <- '/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/paper_code_github_NEW/Data/COVID/'
+
+
+```
+
+#  Data preprocessing
+Load packages
+
+```{R}
+library(readxl)
+library(readr)
+library(reshape)
+library(tidyverse)
+library(geosphere)
+library(dplyr)
+library(data.table)
+library(tidyquant)
+library(plm)
+#library(maditr)
+
+library("mgcv")
+
+library(stargazer)
+```
+
+## Load the data
+
+### Population data
+
+Load the county-level population data of US in 2019, which was obtained from the U.S. Census Bureau: [ co-est2019-annres.xlsx](https://www2.census.gov/programs-surveys/popest/tables/2010-2019/counties/totals/).
+
+```{R}
+setwd(data_dir)
+
+county_pop <- read_excel('2019 Population.xlsx')
+county_pop <- data.frame(gsub("\\.", "", county_pop$name), county_pop$`2019`)    ## remove all . in name
+names(county_pop)[1:2] <- c("County", "Population")
+## lower case the county?
+county_pop["County"] = apply(county_pop["County"], 1, tolower)
+```
+
+### FIPS code data
+
+To allow for a better match between datasets, we also extracted "FIPS code" that uniquely identifies counties within the USA from the U.S.Bureau of Labor Statistics [FIPS data](https://www.bls.gov/cew/classifications/areas/sic-area-titles.htm).
+
+```{R}
+setwd(data_dir)
+
+my_FIPS <- read_csv('FIPS code.csv')
+my_FIPS <- data.frame(gsub("\\.", "", my_FIPS$name), my_FIPS$code)
+names(my_FIPS)[1:2] <- c("County", "FIPS")
+## lower case the county?
+my_FIPS["County"] = apply(my_FIPS["County"], 1, tolower)
+```
+
+Merge the population data with FIPS code data and select ALL counties.
+
+```{R}
+county_FIPS <- merge(x = county_pop, y = my_FIPS, by = "County", all.x = TRUE)   
+county_FIPS <- arrange(county_FIPS, -Population)
+county_FIPS <- tibble::rowid_to_column(county_FIPS, "ID")                        ## add ID
+county_FIPS$FIPSnew <-str_pad(county_FIPS$FIPS, 5, pad = "0")   
+
+county_FIPSspilt <- cbind.data.frame(county_FIPS$ID, county_FIPS$County,
+                                      county_FIPS$Population, county_FIPS$FIPS, 
+                                      county_FIPS$FIPSnew, 
+                                      str_split_fixed(county_FIPS$County, ", ", 2))   ## split column2, to better merge with vaccination data
+names(county_FIPSspilt) <- c("ID", "County", "Population", "FIPS","FIPSnew", "County1", "State")
+
+sum(is.na(county_FIPSspilt))
+colSums(is.na(county_FIPSspilt))
+
+county_FIPSspilt[which(is.na(county_FIPSspilt["FIPS"]) == TRUE), "County"]
+which(is.na(county_FIPSspilt["FIPS"]) == TRUE)
+```
+
+
+### Population density dat
+
+The population density were obtained by dividing population by the area of the region. Area data were obtained from U.S. Census Bureau [Area data](https://tigerweb.geo.census.gov/tigerwebmain/TIGERweb_main.html).
+
+```{R}
+setwd(data_dir)
+
+my_area <- read_excel('US County Area.xlsx')
+
+names(my_area)[1] <- "FIPS"
+my_area <- select(my_area, FIPS, NAME, AREALAND)
+my_area["NAME"] = apply(my_area["NAME"], 1, tolower)
+```
+
+Filling in missing codes as per Laura
+
+```{R}
+county_FIPSspilt[which(is.na(county_FIPSspilt["FIPS"]) == TRUE), "County"]
+which(is.na(county_FIPSspilt["FIPS"]) == TRUE)
+
+# 1: filling with "maui" from area (in fips maui is merged with kalawao under maui FIPS code)
+county_FIPSspilt[395, "FIPS"] <- my_area[which(my_area["NAME"] == "maui county"), "FIPS"]
+county_FIPSspilt[395, "FIPS"]
+county_FIPSspilt[395, "FIPSnew"] <- county_FIPSspilt[395, "FIPS"]
+
+# 2: filling with "obrien" from fips (without apostrophe)
+county_FIPSspilt[2180, "FIPS"] <- my_FIPS[which(my_FIPS["County"] == "obrien county, iowa"), "FIPS"]
+county_FIPSspilt[2180, "FIPS"]
+county_FIPSspilt[2180, "FIPSnew"] <- county_FIPSspilt[2180, "FIPS"]
+
+# 3: filling with "kalawao" from area (in fips maui is merged with kalawao under maui FIPS code)
+county_FIPSspilt[3144, "FIPS"] <- my_area[which(my_area["NAME"] == "kalawao county"), "FIPS"]
+county_FIPSspilt[3144, "FIPS"]
+county_FIPSspilt[3144, "FIPSnew"] <- county_FIPSspilt[3144, "FIPS"]
+
+colSums(is.na(county_FIPSspilt))
+dim(county_FIPSspilt)
+```
+
+###  Facebook connectivity data
+
+This data use an anonymized snapshot of all active Facebook users and their friendship networks to measure the intensity of connectedness between locations, represented by Social Connectedness Index (SCI). Specifically, it measures the relative probability that two individuals across two locations are friends with each other on Facebook [Facebook connectivity](https://data.humdata.org/dataset/social-connectedness-index). 
+
+Load the data and select ALL counties
+
+```{R}
+setwd(data_dir)
+
+my_facebook <- read_tsv('SCI data.tsv')
+
+my_facebook$FIPSnew <-my_facebook$user_loc  
+my_facebook1 <- merge(x=my_facebook, y = county_FIPS, by = "FIPSnew")    ## merge with county_FIPS, easy to expand the sample size
+my_facebook1 <- arrange(my_facebook1, -Population)
+
+county_FIPS$fr_loc <- county_FIPS$FIPSnew
+my_facebook3 <- merge(x=my_facebook1, y = county_FIPS, by = "fr_loc")
+my_facebook3 <- arrange(my_facebook3, -Population.y)
+
+my_facebook_final <- select(my_facebook3, -Population.x, -Population.y,  -FIPS.x, -FIPS.y, -FIPSnew.y)
+my_facebook_final$ID.x <- as.character(my_facebook_final$ID.x)
+my_facebook_final$ID.y <- as.character(my_facebook_final$ID.y)
+
+remove(my_facebook)
+remove(my_facebook1)
+remove(my_facebook3)
+
+length(unique(my_facebook_final$ID.x))
+length(unique(my_facebook_final$ID.y))
+length(unique(c(my_facebook_final$ID.y, my_facebook_final$ID.x)))
+
+setdiff(county_FIPSspilt$ID, my_facebook_final$ID.x)
+
+county_FIPSspilt <- county_FIPSspilt[-c(395, 1928, 2004, 2180, 3144),]## remove counties without facebook connections
+```
+
+Delect ID = 94
+
+```{R}
+my_facebook_final2 <- my_facebook_final[!(my_facebook_final$ID.x=="94"| my_facebook_final$ID.y=="94"), ]   ## ID=94 (District of Columbia) is missing in Policy Variable, so delete it now
+county_FIPSspilt <- county_FIPSspilt[-94,]
+
+remove(my_facebook_final)
+```
+
+Reshape wide-format data and melts it into long-format data
+
+```{R}
+my_facebook_final3 <- reshape2::melt(my_facebook_final2)  ##takes wide-format data and melts it into long-format data.
+my_facebook_final3$ID.x <- as.numeric(my_facebook_final3$ID.x)
+my_facebook_final3$ID.y <- as.numeric(my_facebook_final3$ID.y)
+my_facebook_final3 <- arrange(my_facebook_final3, ID.x)
+
+remove(my_facebook_final2)
+```
+
+
+#### Generate Facebook connectivity network
+
+```{R}
+
+SCI_index <- reshape2::dcast(my_facebook_final3, ID.x ~ ID.y) 
+SCI_index <- select(SCI_index, -ID.x)
+class(SCI_index)
+
+remove(my_facebook_final3)
+
+```
+
+### Population density data
+The population density were obtained by dividing population by the area of the region. Area data were obtained from U.S. Census Bureau [Area data](https://tigerweb.geo.census.gov/tigerwebmain/TIGERweb_main.html).
+
+```{R}
+setwd(data_dir)
+
+my_area <- read_excel('US County Area.xlsx')
+
+names(my_area)[1] <- "FIPS"
+my_area <- select(my_area, FIPS, NAME, AREALAND) 
+my_area["NAME"] = apply(my_area["NAME"], 1, tolower)
+```
+
+Merge population data with area data and generate log(population density)
+
+```{R}
+pop_densi <- merge(x = county_FIPSspilt, y = my_area, by = "FIPS") 
+pop_densi <- arrange(pop_densi, ID)
+
+pop_densi$density_sk <- pop_densi$Population/ (pop_densi$AREALAND *1000000)      ## population per square kilometers
+pop_densi$log_popdensi_sk <- log(pop_densi$density_sk)        ## log population density
+pop_densi <- select(pop_densi, -ID, -County, -Population,
+                    -County1, -FIPSnew, -State, -NAME, -AREALAND)
+
+remove(my_area)
+
+setdiff(county_FIPSspilt$FIPS, pop_densi$FIPS)
+which(county_FIPSspilt$FIPS == "2261")
+county_FIPSspilt$ID[which(county_FIPSspilt$FIPS == "2261")]
+colnames(SCI_index)[which(county_FIPSspilt$FIPS == "2261")]
+
+county_FIPSspilt$County1[which(county_FIPSspilt$FIPS == "2261")]
+county_FIPSspilt$State[which(county_FIPSspilt$FIPS == "2261")]
+
+## Need to remove this from the SCI_Index as well
+SCI_index <- SCI_index[,-which(county_FIPSspilt$FIPS == "2261")]
+SCI_index <- SCI_index[-which(county_FIPSspilt$FIPS == "2261"),]
+
+county_FIPSspilt <- county_FIPSspilt[-which(county_FIPSspilt$FIPS == "2261"),]## removed as non population density info available
+
+
+
+```
+
+
+###  COVID19 confirmed data
+
+Load the time series table of US confirmed cases reported at the county level for the period 1/22/2020-11/30/2021 [time$\_$series$\_$covid19$\_$confirmed$\_$US.csv](https://github.com/CSSEGISandData/COVID-19/blob/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv). Note that it is cumulative data.
+
+
+```{R}
+covid_data <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv"
+my_covid_data<-read_csv(url(covid_data))
+
+confirmed_US <- merge(x = county_FIPSspilt, y = my_covid_data, by = "FIPS")    ## merge to obtain top500 samples
+confirmed_US <- select(confirmed_US, -UID,
+                       -iso2, -iso3, -code3, -Admin2,
+                       -Country_Region, -Combined_Key, -Province_State)          ## keep variables that of importance
+head(confirmed_US)
+
+confirmed_US1 <- confirmed_US[, c(1:688)]                                        ## delete columns after 2021-11-30
+remove(confirmed_US)
+remove(my_covid_data)
+
+confirmed_pop <- merge(x = confirmed_US1, y = pop_densi, by = "FIPS")
+head(confirmed_pop)
+remove(confirmed_US1)
+confirmed_pop <- arrange(confirmed_pop, ID)
+
+sum(is.na(confirmed_pop))
+colSums(is.na(confirmed_pop))
+```
+
+### To send to Laura - minimal data for hierarchical clustering
+
+```{R}
+max(confirmed_pop$ID)
+setdiff(1:max(confirmed_pop$ID), confirmed_pop$ID)
+setdiff(1:max(confirmed_pop$ID), colnames(SCI_index))
+
+
+write.csv(confirmed_pop, file = paste("confirmed_pop_ALL", ".csv", sep = ""), row.names=FALSE)
+```
+
+#### Generate Geographical distance Network
+
+```{R}
+coordinate <- cbind(confirmed_pop$Long_, confirmed_pop$Lat)      
+#coordinate <- coordinate[-94,]                                                   ## drop ID = 94, because ID = 94 is missing in Policy variable
+Geodist <- distm(coordinate, coordinate, fun = distHaversine)                    ## assumes a spherical earth, ignoring ellipsoidal effects
+
+colnames(Geodist) <- colnames(SCI_index)
+
+
+```
+
+Reshape wide-format data and melts it into long-format
+
+```{R}
+
+confirmed_pop_Long <- melt(confirmed_pop, 
+                           id.vars = c( "FIPS", "ID", "County", "Population",
+                                        "FIPSnew", "County1", "State",  "Lat",
+                                        "Long_", "density_sk", "log_popdensi_sk"),
+                           variable.name = "date")
+names(confirmed_pop_Long)[12:13] <- c("Date", "cum_Confirmed")
+
+colSums(is.na(confirmed_pop_Long))
+
+str(confirmed_pop_Long$Date)                                                                  ## set date format
+confirmed_pop_Long$Date <-format(as.Date(confirmed_pop_Long$Date, '%m/%d/%y'),"%Y-%m-%d")
+confirmed_pop_Long$Date <- as.Date(confirmed_pop_Long$Date)
+str(confirmed_pop_Long$Date)
+
+colSums(is.na(confirmed_pop_Long))
+```
+
+Plot the ggplot of cumulative COVID19 data
+
+```{R}
+ggplot(data = confirmed_pop_Long, 
+       aes(x = Date, y = cum_Confirmed , group = County)) +
+  geom_line(aes(col = County)) +
+  labs(x = "Date",  y = "Daily Cumulative Confirmed Case") +
+  theme(legend.position = "none") + 
+  scale_x_date(date_breaks = "1 month") +
+  theme(axis.text.x=element_text(angle=60, hjust=1))                             ## The Plot of Daily Cumulative Data
+```
+
+Convert COVID19 data into daily data
+
+```{R}
+confirmed_pop_Long2 <- confirmed_pop_Long %>%
+  group_by(County)%>%
+  arrange(ID, Date) %>%
+  mutate(daily_confirmed = c(first(cum_Confirmed), diff(cum_Confirmed)))         ## convert to daily data  (have negative value)
+
+remove(confirmed_pop_Long)
+```
+
+Plot the ggplot of COVID19 daily data
+
+```{R}
+ggplot(data = confirmed_pop_Long2, 
+       aes(x = Date, y = daily_confirmed, group = County)) +
+  geom_line(aes(col = County)) +
+  labs(x = "Date",  y = "daily_confirmed") +
+  theme(legend.position = "none") + 
+  scale_x_date(date_breaks = "1 month") +
+  theme(axis.text.x=element_text(angle=60, hjust=1))                             ## The plot of Daily Confirmed Data
+```
+
+Generate  per 10,000 daily confirmed data
+
+```{R}
+confirmed_pop_Long2$per10000_daily_confirmed <- (confirmed_pop_Long2$daily_confirmed / confirmed_pop_Long2$Population ) * 10000   ## per 10,000 daily confirmed case
+```
+
+
+Plot per10000 daily COVID19 confirmed data
+
+```{R}
+ggplot(data = confirmed_pop_Long2, 
+       aes(x = Date, y = per10000_daily_confirmed, group = County)) +
+  geom_line(aes(col = County)) +
+  labs(x = "Date",  y = "per 10000 daily_confirmed") +
+  theme(legend.position = "none") + 
+  scale_x_date(date_breaks = "1 month") +
+  theme(axis.text.x=element_text(angle=60, hjust=1))                ## The plot of per10000 daily confirmed data
+```
+
+
+### Vaccination Data  
+
+Load state-level vaccination data for the period 12/14/2020 - 11/23/2021[vaccination data](https://github.com/govex/COVID-19/tree/master/data_tables/vaccine_data/us_data/time_series). Note that it is cumulative data.
+
+```{R}
+
+Vaccinated <- "https://raw.githubusercontent.com/govex/COVID-19/master/data_tables/vaccine_data/us_data/time_series/time_series_covid19_vaccine_doses_admin_US.csv"
+my_Vaccinated <-read_csv(url(Vaccinated))
+my_Vaccinated <- select(my_Vaccinated, -FIPS, -UID,
+                        -iso2, -iso3, -code3, -Admin2,
+                        -Country_Region, -Lat, -Long_, -Combined_Key, -Population)
+
+names(my_Vaccinated)[1] <- "State"
+my_Vaccinated["State"] = apply(my_Vaccinated["State"], 1, tolower)
+
+vaccinated <- merge(x = county_FIPSspilt, y = my_Vaccinated, by = "State")
+vaccinated1 <- vaccinated[, c(1:359)] 
+vaccinated1 <- arrange(vaccinated1, ID)
+head(vaccinated1)
+
+remove(my_Vaccinated)
+remove(vaccinated)
+```
+
+Reshape wide-format data and melts it into long-format
+
+```{R}
+vaccinated_Long <- melt(vaccinated1,
+                        id.vars = c( "State", "ID",  "County", "Population",
+                                     "FIPS", "County1", "FIPSnew"), 
+                        variable.name = "date")                                   ## wide format to long format  
+
+names(vaccinated_Long)[8:9] <- c("Date", "cum_Vaccinated")
+
+
+str(vaccinated_Long$Date)
+vaccinated_Long$Date <- as.Date(vaccinated_Long$Date)
+str(vaccinated_Long$Date)
+
+remove(vaccinated1)
+```
+
+Plot the Cumulative Vaccination
+
+```{R}
+ggplot(data = vaccinated_Long, 
+       aes(x = Date, y = cum_Vaccinated , group = State)) +
+  geom_line(aes(col = State)) +
+  labs(x = "Date",  y = "cum_Vaccinated Case") +
+  theme(legend.position = "none") +
+  scale_x_date(date_breaks = "1 month") +
+  theme(axis.text.x=element_text(angle=60, hjust=1))                             ## The Plot of Daily Cumulative Vaccination
+```
+
+Diagnosis the warning messiage
+
+```{R}
+sum(is.na(vaccinated_Long))         ## diagnosis the warning messiage
+colSums(is.na(vaccinated_Long))     ## all NAs are in coloum "cum_Vaccinated"
+```
+
+Convert to daily vaccinated data
+
+```{R}
+vaccinated_Long2 <- vaccinated_Long %>%
+  group_by(County)%>%
+  arrange(ID, Date) %>%
+  mutate(daily_vaccinated = c(first(cum_Vaccinated), diff(cum_Vaccinated)))      ## convert to daily vaccinated data
+
+remove(vaccinated_Long)
+```
+
+Plot daily vaccination data
+
+```{R}
+ggplot(data = vaccinated_Long2, 
+       aes(x = Date, y = daily_vaccinated, group = State)) +
+  geom_line(aes(col = State)) +
+  labs(x = "Date",  y = "daily_vaccinated") +
+  theme(legend.position = "none") +
+  scale_x_date(date_breaks = "1 month") +
+  theme(axis.text.x=element_text(angle=60, hjust=1))                             ## The plot of daily vaccinated data
+```
+
+
+Diagnosis the warning message
+
+```{R}
+sum(is.na(vaccinated_Long2))           ## diagnosis the warning message
+colSums(is.na(vaccinated_Long2))      ## total number of NA values per column
+```
+
+Generate per daily vaccinated data
+
+```{R}
+vaccinated_Long2$per_daily_vaccinated <- (vaccinated_Long2$daily_vaccinated / vaccinated_Long2$Population)  ## per daily vaccinated data
+```
+
+Plot per daily vaccination 
+
+```{R}
+ggplot(data = vaccinated_Long2, 
+       aes(x = Date, y = per_daily_vaccinated, group = State)) +
+  geom_line(aes(col = State)) +
+  labs(x = "Date",  y = "per_daily_vaccinated") +
+  theme(legend.position = "none") +
+  scale_x_date(date_breaks = "1 month") +
+  theme(axis.text.x=element_text(angle=60, hjust=1))                             ## The plot of Per Daily Vaccination
+```
+
+Merge with the above data
+
+```{R}
+confirmed_pop_vacc <- left_join(confirmed_pop_Long2, vaccinated_Long2)
+
+remove(confirmed_pop_Long2)
+remove(vaccinated_Long2)
+
+colSums(is.na(confirmed_pop_vacc))
+```
+
+### Policy data
+
+The Oxford Covid-19 Government Response Tracker (GitHub repo, university website) tracks individual policy measures across 20 indicators. They also calculate several indices to give an overall impression of government activity. Here we use Containment and health index as the proxy of Policy variable [Policy data](https://github.com/CSSEGISandData/COVID-19_Unified-Dataset)
+
+
+```{R}
+my_policy <- "https://raw.githubusercontent.com/OxCGRT/USA-covid-policy/master/data/OxCGRT_US_latest.csv"
+my_policy <-read_csv(url(my_policy))
+```
+
+Keep the variables that of importance
+
+```{R}
+policy <- my_policy%>% filter_all(any_vars(str_detect(str_to_lower(.), "^state_wide")))  ## keep all US data
+str(policy)
+policy2 <- select(policy, 
+                  RegionName, Date,
+                  `C1_School closing`, C1_Flag, 
+                  `C2_Workplace closing`, C2_Flag, 
+                  `C3_Cancel public events`, C3_Flag, 
+                  `C4_Restrictions on gatherings`, C4_Flag,
+                  `C5_Close public transport`, C5_Flag, 
+                  `C6_Stay at home requirements`, C6_Flag, 
+                  `C7_Restrictions on internal movement`, C7_Flag, 
+                  `C8_International travel controls`,
+                  `H1_Public information campaigns`, H1_Flag,
+                  `H2_Testing policy`,
+                  `H3_Contact tracing`,
+                  `H6_Facial Coverings`, H6_Flag,
+                  `H7_Vaccination policy`, H7_Flag,
+                  `H8_Protection of elderly people`, H8_Flag,
+                  ContainmentHealthIndex
+                  )             ## keep variables that of importance
+
+policy3 <- policy2 %>% filter(Date >= "20200122" & Date <= "20211130")
+names(policy3)[1:27] <- c("State", "Date", "C1","C1_Flag", "C2", "C2_Flag", "C3", "C3_Flag", 
+                          "C4", "C4_Flag","C5", "C5_Flag", "C6", "C6_Flag",
+                          "C7", "C7_Flag", "C8",
+                          "H1", "H1_Flag", "H2", "H3", "H6", "H6_Flag", 
+                          "H7", "H7_Flag", "H8", "H8_Flag")      ##  Make the name more concise
+
+
+str(policy3$Date)                                                                ## Setting Date format
+policy3$Date <- as.character(policy3$Date)
+policy3$Date <- format(as.Date(policy3$Date, "%Y%m%d"),"%Y-%m-%d")
+str(policy3$Date)
+policy3$Date <- as.Date(policy3$Date) 
+str(policy3$Date)
+
+
+colSums(is.na(policy3))                                     ## Contain many NAs
+
+remove(policy)
+remove(policy2)
+```
+
+
+Now, We need to Interpolate for the variable 'Containment Health Index'. The methodology for calculating Indices is here: [Indices](https://github.com/OxCGRT/covid-policy-tracker/blob/master/documentation/index_methodology.md)
+
+(1) Firstly, save data and Interpolate C1-H8 in Excel, which is easier. Here we use before-and-after averaging to interpolate missing values in C1-H8.
+
+```{R}
+write.csv(policy3, file = paste("policy3", ".csv", sep = "")) 
+remove(policy3)
+```
+ 
+(2) Import the Interpolated data file "inter-policy.csv"
+
+```{R}
+Interpolation_policy <- read_csv('inter-policy.csv')
+Interpolation_policy <- Interpolation_policy[, -1]
+
+Interpolation_policy["State"] = apply(Interpolation_policy["State"], 1, tolower)
+
+names(Interpolation_policy)[2] <- "Date"
+str(Interpolation_policy$Date) 
+Interpolation_policy$Date <- as.Date(Interpolation_policy$Date)
+str(Interpolation_policy$Date)
+```
+
+(3) Interpolate all 'Flag' variables, replace all NA to 0
+
+```{R}
+selected_columns <- grep("_Flag", names(Interpolation_policy))
+
+Interpolation_policy <- Interpolation_policy %>% 
+  mutate(across(all_of(selected_columns), ~replace_na(.x, 0)))
+```
+
+(4) Calculate $I_{jt}$ Indices
+
+```{R}
+Interpolation_policy$Ic1 <- ifelse(Interpolation_policy$C1 ==0, 0, 100 *(Interpolation_policy$C1- 0.5*(1-Interpolation_policy$C1_Flag))/3)
+Interpolation_policy$Ic2 <- ifelse(Interpolation_policy$C2 ==0, 0, 100 *(Interpolation_policy$C2- 0.5*(1-Interpolation_policy$C2_Flag))/3)
+Interpolation_policy$Ic3 <- ifelse(Interpolation_policy$C3 ==0, 0, 100 *(Interpolation_policy$C3- 0.5*(1-Interpolation_policy$C3_Flag))/2)
+Interpolation_policy$Ic4 <- ifelse(Interpolation_policy$C4 ==0, 0, 100 *(Interpolation_policy$C4- 0.5*(1-Interpolation_policy$C4_Flag))/4)
+Interpolation_policy$Ic5 <- ifelse(Interpolation_policy$C5 ==0, 0, 100 *(Interpolation_policy$C5- 0.5*(1-Interpolation_policy$C5_Flag))/2)
+Interpolation_policy$Ic6 <- ifelse(Interpolation_policy$C6 ==0, 0, 100 *(Interpolation_policy$C6- 0.5*(1-Interpolation_policy$C6_Flag))/3)
+Interpolation_policy$Ic7 <- ifelse(Interpolation_policy$C7 ==0, 0, 100 *(Interpolation_policy$C7- 0.5*(1-Interpolation_policy$C7_Flag))/2)
+Interpolation_policy$Ic8 <- ifelse(Interpolation_policy$C8 ==0, 0, 100 *(Interpolation_policy$C8)/4)
+
+Interpolation_policy$Ih1 <- ifelse(Interpolation_policy$H1 ==0, 0, 100 *(Interpolation_policy$H1- 0.5*(1-Interpolation_policy$H1_Flag))/2)
+Interpolation_policy$Ih2 <- ifelse(Interpolation_policy$H2 ==0, 0, 100 *(Interpolation_policy$H2)/3)
+Interpolation_policy$Ih3 <- ifelse(Interpolation_policy$H3 ==0, 0, 100 *(Interpolation_policy$H3)/2)
+
+Interpolation_policy$Ih6 <- ifelse(Interpolation_policy$H6 ==0, 0, 100 *(Interpolation_policy$H6- 0.5*(1-Interpolation_policy$H6_Flag))/4)
+Interpolation_policy$Ih7 <- ifelse(Interpolation_policy$H7 ==0, 0, 100 *(Interpolation_policy$H7- 0.5*(1-Interpolation_policy$H7_Flag))/5)
+Interpolation_policy$Ih8 <- ifelse(Interpolation_policy$H8 ==0, 0, 100 *(Interpolation_policy$H8- 0.5*(1-Interpolation_policy$H8_Flag))/3)
+```
+
+(5) Interpolate 'Containment Health Index' using Simple Mean of Ic1 ~ Ih8
+
+```{R}
+Interpolation_policy$ContainmentHealthIndex1 <- ifelse(is.na(Interpolation_policy$ContainmentHealthIndex), rowMeans(Interpolation_policy[,29:42]), Interpolation_policy$ContainmentHealthIndex)
+colSums(is.na(Interpolation_policy)) 
+
+
+Interpolation_policy <- select(Interpolation_policy,
+                               State, Date,
+                               ContainmentHealthIndex, ContainmentHealthIndex1)
+
+confirm_pop_vacc_policy <- left_join(confirmed_pop_vacc, Interpolation_policy)    ## merge with previous data
+
+remove(confirmed_pop_vacc)
+remove(Interpolation_policy)
+
+colSums(is.na(confirm_pop_vacc_policy))                                           
+unique(confirm_pop_vacc_policy[which(is.na(confirm_pop_vacc_policy$ContainmentHealthIndex1)),2:3])   ## ID =94(District of Columbia) is missing in policy
+```
+
+### Temperature data
+
+Extract the daily average near-surface air temperature (T) from the Hydromet folder [Temperature data](https://github.com/CSSEGISandData/COVID-19_Unified-Dataset/tree/master/Hydromet)
+
+
+```{R}
+Temp <- list()    ## read T into a list
+
+for (i in c("01","02","03","04","05","06","07","08","09","10","11","12")){
+  data_path6 <- paste0(data_dir,"Hydromet/Hydromet_2020", i, ".rds")
+  data <-  readRDS(file = data_path6) 
+  Temp_df<- as.data.frame(data)
+  Temp[[i]]<-Temp_df
+}
+
+
+for (i in c("01","02","03","04","05","06","07","08","09","10", "11")){
+  data_path6 <- paste0(data_dir,"Hydromet/Hydromet_2021", i, ".rds")
+  data <-  readRDS(file = data_path6) 
+  Temp_df<- as.data.frame(data)
+  Temp[[as.numeric(i)+12]]<-Temp_df
+}
+
+remove(Temp_df)
+```
+
+Select 4 columns ("ID", "Date", "T", and "HydrometSource"). keep Temperature if HydrometSource == "ERA5". HydrometSource == "ERA5-CIESIN" is population weighted temperature.
+
+```{R}
+func <- function(z){
+  z<- filter(z, HydrometSource == "ERA5")                     
+  z<- select(z, 1:3, 28)
+  z<- z%>% filter_all(any_vars(str_detect(str_to_lower(.), "^us")))
+  
+  z <-z %>%
+    separate(ID, 
+             into = c("country", "FIPSnew"), 
+             sep = "(?<=[A-Za-z])(?=[0-9])",
+             fill = "right"
+    )
+  z <- merge(x = county_FIPSspilt, y = z, by = "FIPSnew")  
+  
+  return(z)
+}
+
+Temperature <- lapply(Temp, func)                                                
+temperature <- do.call(rbind.data.frame, Temperature)               ## merge (99 county, ID=65 San Francisco is missing)
+temperature <- temperature %>% arrange(ID, Date) %>% filter(Date >= "2020-01-22")
+
+
+class(temperature)
+setDT(temperature) 
+class(temperature)
+
+rm(Temperature)
+rm(Temp)
+
+colSums(is.na(temperature))
+```
+
+Merge with the above data
+
+```{R}
+confirm_pop_vacc_policy_tem <- left_join(confirm_pop_vacc_policy, temperature)  
+
+missing_temp <- unique(confirm_pop_vacc_policy_tem$ID[which(is.na(confirm_pop_vacc_policy_tem$T) == TRUE)]) 
+
+colSums(is.na(confirm_pop_vacc_policy_tem)) 
+
+```
+
+```{R}
+
+## for every county with mising temperature
+for(i in missing_temp ){
+  cat("County", i, "is", unique(subset(confirm_pop_vacc_policy, ID == i)$County), "\n")
+  ## find nearets county
+  closest_county_ID <- county_FIPSspilt$ID[order(Geodist[which(county_FIPSspilt$ID==i),], decreasing = FALSE)[2]]
+  if(closest_county_ID %in% missing_temp){
+    cat("WARNING", i, "\n")
+    closest_county_ID <- county_FIPSspilt$ID[order(Geodist[which(county_FIPSspilt$ID==i),], decreasing = FALSE)[3]]
+    }
+  cat("Nearets Neighbour is", closest_county_ID, "is", unique(subset(confirm_pop_vacc_policy, ID == closest_county_ID)$County), "\n")
+  
+  temperature <- rbind(temperature, copy(temperature[ID == closest_county_ID])[, FIPSnew:= unique(subset(confirm_pop_vacc_policy, ID == i)$FIPSnew)][,ID:= i]
+                      [, County:= unique(subset(confirm_pop_vacc_policy, ID == i)$County)][, Population:= unique(subset(confirm_pop_vacc_policy, ID == i)$Population)]
+                      [, FIPS:=unique(subset(confirm_pop_vacc_policy, ID == i)$FIPS)][, County1:=unique(subset(confirm_pop_vacc_policy, ID == i)$County1)]) 
+}
+
+
+
+```
+
+Merge with the above data
+
+```{R}
+confirm_pop_vacc_policy_tem <- left_join(confirm_pop_vacc_policy, temperature)  
+
+colSums(is.na(confirm_pop_vacc_policy_tem)) 
+```
+
+### Final data: COVID19 mortality (daily level)
+
+```{R}
+myfinal_daily <-confirm_pop_vacc_policy_tem  
+
+remove(confirm_pop_vacc_policy_tem)
+ 
+# replace negative values by 0
+sum(myfinal_daily$per10000_daily_confirmed < 0) 
+myfinal_daily$per10000_daily_confirmed <- ifelse(myfinal_daily$per10000_daily_confirmed < 0, 0, myfinal_daily$per10000_daily_confirmed)
+sum(myfinal_daily$per10000_daily_confirmed < 0)
+ 
+# replace negative values by 0
+sum(myfinal_daily$per_daily_vaccinated < 0, na.rm= TRUE)        
+myfinal_daily$per_daily_vaccinated <- ifelse(myfinal_daily$per_daily_vaccinated < 0, 0, myfinal_daily$per_daily_vaccinated)
+sum(myfinal_daily$per_daily_vaccinated < 0, na.rm = TRUE)
+myfinal_daily$per_daily_vaccinated[is.na(myfinal_daily$per_daily_vaccinated)] <- 0
+
+colSums(is.na(myfinal_daily))
+## fILLING IN THE MSIISNG VALUES WITH 0'S
+myfinal_daily_temp <- myfinal_daily
+myfinal_daily_temp[which(is.na(myfinal_daily_temp["cum_Vaccinated"]) == TRUE), "cum_Vaccinated"] <- 0
+myfinal_daily_temp[which(is.na(myfinal_daily_temp["daily_vaccinated"]) == TRUE), "daily_vaccinated"] <- 0
+myfinal_daily_temp[which(is.na(myfinal_daily_temp["ContainmentHealthIndex"]) == TRUE), "ContainmentHealthIndex"] <- 0
+colSums(is.na(myfinal_daily_temp))
+```
+
+
+### To send to Laura - full data we need combining
+
+```{R}
+#
+colSums(is.na(myfinal_daily_temp))
+head(myfinal_daily_temp)
+#
+#myfinal_weekly
+write.csv(subset(myfinal_daily_temp, select = -c(log_popdensi_sk, per10000_daily_confirmed, HydrometSource)), file = paste("myfinal_daily_temp_ALL", ".csv", sep = ""), row.names=FALSE)
+```
+
+
+```{R}
+Geodist <- as.data.frame(Geodist)
+
+write.csv(SCI_index, file = paste("SCI_index_ALL", ".csv", sep = ""), row.names=FALSE)
+write.csv(Geodist, file = paste("Geodist_ALL", ".csv", sep = ""), row.names=FALSE)
+
+```
+
+```{R}
+setdiff(myfinal_daily_temp$ID, confirmed_pop$ID)
+setdiff(confirmed_pop$ID, myfinal_daily_temp$ID)
+
+setdiff(confirmed_pop$ID, colnames(SCI_index))
+setdiff(confirmed_pop$ID, colnames(Geodist))
+
+setdiff(colnames(SCI_index), confirmed_pop$ID)
+setdiff(colnames(Geodist), confirmed_pop$ID)
+```
+
+
+
+
+

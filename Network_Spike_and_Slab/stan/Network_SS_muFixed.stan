@@ -59,6 +59,16 @@ data {
 
 }
 
+transformed data {
+  // Sufficient Statistics
+  vector[p] x_bar;
+  matrix[p, p] S_bar;  
+  for(j in 1:p){
+    x_bar[j] = mean(Y[,j]);
+  }
+  S_bar = Y'*Y/n - x_bar*x_bar';
+}
+
 parameters {
    
    
@@ -84,14 +94,35 @@ transformed parameters {
    corr_matrix[p] Rho; 
    matrix[p, p] tri_tilde_Rho; 
    
-   // Adjusting for the different priors
+   // Adjusting for the different priors - then maybe we can adjust for sample size later 
+   /*
+   eta0[1] = eta0_p1 + tilde_eta0[1] * eta0_p2;
+   eta0[2] = 0 + tilde_eta0[2] * eta0_p2;
+   eta1[1] = eta1_p1 + tilde_eta1[1] * eta1_p2;
+   eta1[2] = 0 + tilde_eta1[2] * eta1_p2;
+   eta2[1] = eta2_p1 + tilde_eta2[1] * eta2_p2;
+   eta2[2] = 0 + tilde_eta2[2] * eta2_p2;
+   */
+   // So we want to add another transformation such that tilde_eta doesn't start from N(0, 1), 
+   // but I guess something with a bigger variance, then we need to adjust the transformation to 
    eta0[1] = eta0_p1 + tilde_eta0[1] * eta0_p2 / sqrt((p*(p-1)/2.0)/n);
    eta0[2] = 0 + tilde_eta0[2] * eta0_p2 / sqrt((p*(p-1)/2.0)/n);
    eta1[1] = eta1_p1 + tilde_eta1[1] * eta1_p2 / sqrt((p*(p-1)/2.0)/n);
    eta1[2] = 0 + tilde_eta1[2] * eta1_p2 / sqrt((p*(p-1)/2.0)/n);
    eta2[1] = eta2_p1 + tilde_eta2[1] * eta2_p2 / sqrt((p*(p-1)/2.0)/n);
    eta2[2] = 0 + tilde_eta2[2] * eta2_p2 / sqrt((p*(p-1)/2.0)/n);
+   
+   
+   //eta0 = tilde_eta0 / sqrt((p*(p-1)/2.0)/n);
+   //eta1 = tilde_eta1 / sqrt((p*(p-1)/2.0)/n);
+   //eta2 = tilde_eta2 / sqrt((p*(p-1)/2.0)/n);
+   // tilde_Rho_basis has n x p observations for p(p-1)/2 parameters
+   // eta has p(p-1)/2 'observations' for 6 parameters 
+   //eta0 = tilde_eta0 / sqrt(((p*(p-1)/2.0)/6.0)/(p*n/(p*(p-1.0)/2.0)));
+   //eta1 = tilde_eta1 / sqrt(((p*(p-1)/2.0)/6.0)/(p*n/(p*(p-1.0)/2.0)));
+   //eta2 = tilde_eta2 / sqrt(((p*(p-1)/2.0)/6.0)/(p*n/(p*(p-1.0)/2.0)));
 
+   
    for(j in 1:p){
       //for(k in 1:j){
       for(k in 1:p){
@@ -138,19 +169,42 @@ model {
    
    Theta = quad_form_diag(Rho, sqrt_theta_ii);
    
+   /*
+   target += normal_lpdf(eta0[1] | eta0_p1, eta0_p2);// intercept
+   target += normal_lpdf(eta0[2] | 0, eta0_p2);// network coefficient
+   target += normal_lpdf(eta1[1] | eta1_p1, eta1_p2);// intercept
+   target += normal_lpdf(eta1[2] | 0, eta1_p2);// network coefficient
+   target += normal_lpdf(eta2[1] | eta2_p1, eta2_p2);// intercept
+   target += normal_lpdf(eta2[2] | 0, eta2_p2);// network coefficient
+   */
+   /*
+   target += normal_lpdf(tilde_eta0 | 0, 1);
+   target += normal_lpdf(tilde_eta1 | 0, 1);
+   target += normal_lpdf(tilde_eta2 | 0, 1);
+   */
    target += normal_lpdf(tilde_eta0 | 0, sqrt((p*(p-1)/2.0)/n));
    target += normal_lpdf(tilde_eta1 | 0, sqrt((p*(p-1)/2.0)/n));
    target += normal_lpdf(tilde_eta2 | 0, sqrt((p*(p-1)/2.0)/n));
-  
+
+
+   // target += normal_lpdf(mu | mu_m, mu_s);
+   /*
    for (i in 1:n){
      // Y follows multi normal distribution
+     //Y[i,] ~ multi_normal_prec(mu, Theta);
      target += multi_normal_prec_lpdf(Y[i,] | mu, Theta);
    }
+   */
+   //target += n*(-0.5*p*log(2*pi()) + 0.5*log_determinant(Theta) - 0.5*trace(S*Theta));
+   target += n*(-0.5*p*log(2*pi()) + 0.5*log_determinant(Theta)  - 0.5*(x_bar - mu)'*Theta*(x_bar - mu) - 0.5*trace(S_bar*Theta));
    
 }
 
 generated quantities {
+   //matrix[p, p] Rho;
    matrix[p, p] Theta;
+   //Rho = multiply_lower_tri_self_transpose(L_Rho);
+   //Theta = quad_form_diag(multiply_lower_tri_self_transpose(L_Rho), sqrt_theta_ii);
    Theta = quad_form_diag(Rho, sqrt_theta_ii);
    
 }

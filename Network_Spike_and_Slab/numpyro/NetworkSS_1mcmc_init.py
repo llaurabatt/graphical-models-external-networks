@@ -55,6 +55,7 @@ def mcmc1_init(my_vals,
                n_samples,
                init_strategy:Optional[str]='init_to_value',
                thinning:Optional[int]=0,
+               my_covariates=None,
         ):
 
     #%%
@@ -67,6 +68,8 @@ def mcmc1_init(my_vals,
     import my_utils
     #%%
     n,p = my_vals.shape
+    if my_covariates is not None:
+        _, q = my_covariates.shape
     n_nets = len(my_model_args['A_list'])
     print(f"NetworkSS, n {n}, p {p}, number of networks {n_nets}")
     #%%
@@ -83,39 +86,64 @@ def mcmc1_init(my_vals,
     #%%
     ## first element for p=10, second element for p=50
     fix_params=True
-    mu_fixed=jnp.zeros((p,))
     scale_spike_fixed =0.0033341
-    fixed_params_dict = {"scale_spike":scale_spike_fixed, "mu":mu_fixed}
+    
     blocked_params_list = ["scale_spike", "mu"]
 
     rho_tilde_init = jnp.zeros((int(p*(p-1)/2),))
     u_init = jnp.ones((int(p*(p-1)/2),))*0.5
-    mu_init = jnp.zeros((p,))
+    
+    if my_covariates is not None:
+        b_init = jnp.zeros((q,))
+    else:
+        mu_fixed = mu_init = jnp.zeros((p,))
     sqrt_diag_init = jnp.ones((p,))
 
     # init strategy
     if init_strategy=='init_to_value':
-        my_init_strategy = init_to_value(values={'rho_tilde':rho_tilde_init, 
-                                                    'u':u_init,
-                                                    'mu':mu_init, 
-                                                    'sqrt_diag':sqrt_diag_init, 
-                                                    # 'eta0_0':my_model_args['eta0_0_m'],
-                                                    # 'eta1_0':my_model_args['eta1_0_m'],
-                                                    # 'eta2_0':my_model_args['eta2_0_m'],                                     
-                                                    # 'eta0_coefs':jnp.array([my_model_args['eta0_coefs_m']]*n_nets),
-                                                    # 'eta1_coefs':jnp.array([my_model_args['eta1_coefs_m']]*n_nets),
-                                                    # 'eta2_coefs':jnp.array([my_model_args['eta2_coefs_m']]*n_nets),})
-                                                    'tilde_eta0_0':0.,
-                                                    'tilde_eta1_0':0.,
-                                                    'tilde_eta2_0':0.,                                     
-                                                    'tilde_eta0_coefs':jnp.array([0.]*n_nets),
-                                                    'tilde_eta1_coefs':jnp.array([0.]*n_nets),
-                                                    'tilde_eta2_coefs':jnp.array([0.]*n_nets),})
+        if my_covariates is not None:
+            my_init_strategy = init_to_value(values={'rho_tilde':rho_tilde_init, 
+                                                        'u':u_init,
+                                                        'b_regression_coefs':b_init, 
+                                                        'sqrt_diag':sqrt_diag_init, 
+                                                        # 'eta0_0':my_model_args['eta0_0_m'],
+                                                        # 'eta1_0':my_model_args['eta1_0_m'],
+                                                        # 'eta2_0':my_model_args['eta2_0_m'],                                     
+                                                        # 'eta0_coefs':jnp.array([my_model_args['eta0_coefs_m']]*n_nets),
+                                                        # 'eta1_coefs':jnp.array([my_model_args['eta1_coefs_m']]*n_nets),
+                                                        # 'eta2_coefs':jnp.array([my_model_args['eta2_coefs_m']]*n_nets),})
+                                                        'tilde_eta0_0':0.,
+                                                        'tilde_eta1_0':0.,
+                                                        'tilde_eta2_0':0.,                                     
+                                                        'tilde_eta0_coefs':jnp.array([0.]*n_nets),
+                                                        'tilde_eta1_coefs':jnp.array([0.]*n_nets),
+                                                        'tilde_eta2_coefs':jnp.array([0.]*n_nets),})
+            fixed_params_dict = {"scale_spike":scale_spike_fixed}
+
+        else:
+            my_init_strategy = init_to_value(values={'rho_tilde':rho_tilde_init, 
+                                            'u':u_init,
+                                            'mu':mu_init, 
+                                            'sqrt_diag':sqrt_diag_init, 
+                                            # 'eta0_0':my_model_args['eta0_0_m'],
+                                            # 'eta1_0':my_model_args['eta1_0_m'],
+                                            # 'eta2_0':my_model_args['eta2_0_m'],                                     
+                                            # 'eta0_coefs':jnp.array([my_model_args['eta0_coefs_m']]*n_nets),
+                                            # 'eta1_coefs':jnp.array([my_model_args['eta1_coefs_m']]*n_nets),
+                                            # 'eta2_coefs':jnp.array([my_model_args['eta2_coefs_m']]*n_nets),})
+                                            'tilde_eta0_0':0.,
+                                            'tilde_eta1_0':0.,
+                                            'tilde_eta2_0':0.,                                     
+                                            'tilde_eta0_coefs':jnp.array([0.]*n_nets),
+                                            'tilde_eta1_coefs':jnp.array([0.]*n_nets),
+                                            'tilde_eta2_coefs':jnp.array([0.]*n_nets),})
+
+            fixed_params_dict = {"scale_spike":scale_spike_fixed, "mu":mu_fixed}
+
     elif init_strategy=='init_to_feasible':
         my_init_strategy = init_to_feasible()
     else:
         raise ValueError("Init strategy should be set to 'init_to_value' or 'init_to_feasible")
-
 
     if ((my_model == models.NetworkSS_repr_etaRepr_loglikRepr)|(my_model == models.NetworkSS_repr_loglikRepr)):
         y_bar = my_vals.mean(axis=0) #p
@@ -123,6 +151,14 @@ def mcmc1_init(my_vals,
         my_model_args.update({"y_bar":y_bar, "S_bar":S_bar, "n":n, "p":p,})
     elif ((my_model == models.NetworkSS_repr_etaRepr)|(my_model == models.NetworkSS_repr)):
         my_model_args.update({"Y":my_vals, "n":n, "p":p,})
+    elif (my_model == models.NetworkSS_regression_repr_etaRepr_loglikRepr):
+        S_bar_y = my_vals.T@my_vals/n #(p,p)
+        S_bar_x = my_covariates.T@my_covariates/n #(q,q)
+        S_bar_yx = my_vals.T@my_covariates/n #(p,q)
+        my_model_args.update({"S_bar_y":S_bar_y, "S_bar_x":S_bar_x, "S_bar_yx":S_bar_yx,
+                              "n":n, "p":p, "q":q})
+    else:
+        raise ValueError("Insert valid model name")
 
 
     #%%
@@ -154,5 +190,5 @@ def mcmc1_init(my_vals,
     # for k,v in s.items():
     #     ss[k] = v[mask]
 
-    with open(data_save_path + f'NetworkSS_1mcmc_p{p}_w{n_warmup}_s{n_samples}_CP{n_samples}.sav' , 'wb') as f:
+    with open(data_save_path + f'NetworkSS_1mcmc_p{p}_w{n_warmup}_s{n_samples}_CP{n_samples}{'_regression' if my_covariates is not None else ''}.sav' , 'wb') as f:
         pickle.dump((s), f)

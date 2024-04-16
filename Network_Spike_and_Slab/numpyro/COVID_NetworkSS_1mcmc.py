@@ -42,6 +42,7 @@ flags.DEFINE_integer('n_samples', None, 'Number of total samples to run (excludi
 flags.DEFINE_string('data_save_path', None, 'Path for saving results.')
 flags.DEFINE_integer('SEED', None, 'Random seed.')
 flags.DEFINE_string('Y', 'COVID_332_meta_pruned.csv', 'Name of file where data for dependent variable is stored.')
+flags.DEFINE_string('X', None, 'Name of file where data for covariate variables is stored.')
 flags.DEFINE_string('model', 'models.NetworkSS_repr_etaRepr_loglikRepr', 'Name of model to be run.')
 flags.DEFINE_string('init_strategy', 'init_to_value', "Either 'init_to_value' (default) or 'init_to_feasible'.")
 flags.DEFINE_multi_string('network_list', ['GEO_meta_clean_332.npy', 'SCI_meta_clean_332.npy', 'flights_meta_clean_332.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
@@ -57,6 +58,7 @@ my_model = eval(FLAGS.model)
 thinning = FLAGS.thinning
 batch_size = 500
 covid_vals_name = FLAGS.Y
+covariates_name = FLAGS.X
 SEED = FLAGS.SEED
 init_strategy = FLAGS.init_strategy
 network_names = FLAGS.network_list
@@ -75,6 +77,8 @@ covid_vals = jnp.array(pd.read_csv(data_path + covid_vals_name, index_col='Unnam
 geo_clean = jnp.array(jnp.load(data_path + network_names[0]))
 sci_clean = jnp.array(jnp.load(data_path + network_names[1]))
 flights_clean = jnp.array(jnp.load(data_path + network_names[2]))
+if covariates_name:
+    covariates = jnp.array(pd.read_csv(data_path + covariates_name, index_col='Unnamed: 0').values)
 
 # covid_vals = covid_vals[:,:100].copy()
 # geo_clean = geo_clean[:100, :100].copy()
@@ -82,21 +86,27 @@ flights_clean = jnp.array(jnp.load(data_path + network_names[2]))
 A_list = [geo_clean, sci_clean, flights_clean]
 
 # mcmc_args = {"A_list":A_list, 
-#                 "eta0_0_m":0., "eta0_0_s":0.145, 
-#         "eta0_coefs_m":0., "eta0_coefs_s":0.145,
-#         "eta1_0_m":-2.197, "eta1_0_s":0.661, 
-#         "eta1_coefs_m":0., "eta1_coefs_s":0.661,
-#         "eta2_0_m":-9.368, "eta2_0_s":4.184, 
-#         "eta2_coefs_m":0., "eta2_coefs_s":4.184,
-#         "mu_m":0., "mu_s":1.} 
+#                 "eta0_0_m":0., "eta0_0_s":0.0015864, 
+#         "eta0_coefs_m":0., "eta0_coefs_s":0.0015864,
+#         "eta1_0_m":-2.1972246, "eta1_0_s":0.3, 
+#         "eta1_coefs_m":0., "eta1_coefs_s":0.3,
+#         "eta2_0_m":-7.7894737, "eta2_0_s":1.0263158, 
+#         "eta2_coefs_m":0., "eta2_coefs_s":1.0263158,
+#         } 
 mcmc_args = {"A_list":A_list, 
-                "eta0_0_m":0., "eta0_0_s":0.0015864, 
-        "eta0_coefs_m":0., "eta0_coefs_s":0.0015864,
-        "eta1_0_m":-2.1972246, "eta1_0_s":0.3, 
-        "eta1_coefs_m":0., "eta1_coefs_s":0.3,
-        "eta2_0_m":-7.7894737, "eta2_0_s":1.0263158, 
-        "eta2_coefs_m":0., "eta2_coefs_s":1.0263158,
-        "mu_m":0., "mu_s":1.} 
+                "eta0_0_m":0., "eta0_0_s":0.003, 
+        "eta0_coefs_m":0., "eta0_coefs_s":0.003,
+        "eta1_0_m":-2.1972246, "eta1_0_s":0.65, 
+        "eta1_coefs_m":0., "eta1_coefs_s":0.65,
+        "eta2_0_m":-11.737, "eta2_0_s":4.184, 
+        "eta2_coefs_m":0., "eta2_coefs_s":4.184,
+        } 
+
+if covariates_name is not None:
+     mcmc_args["my_covariates"] = covariates
+     mcmc_args.update({"b_m":0., "b_s":5.})
+else:
+     mcmc_args.update({"mu_m":0., "mu_s":1.})
 
 # TO-DO: stop-and-start chain not working at the moment
 # def get_init_file(dir, checkpoint):

@@ -63,6 +63,7 @@ flags.DEFINE_string('data_save_path', None, 'Path for saving results.')
 flags.DEFINE_integer('n_samples', 2000, 'Number of total samples to run (excluding warmup).')
 flags.DEFINE_string('model', 'models.NetworkSS_repr_etaRepr_loglikRepr', 'Name of model to be run.')
 flags.DEFINE_string('Y', 'COVID_332_meta_pruned.csv', 'Name of file where data for dependent variable is stored.')
+flags.DEFINE_string('X', None, 'Name of file where data for covariate variables is stored.')
 flags.DEFINE_multi_string('network_list', ['GEO_meta_clean_332.npy', 'SCI_meta_clean_332.npy', 'flights_meta_clean_332.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
 flags.mark_flags_as_required(['thinning', 'SEED', 'data_save_path'])
 FLAGS(sys.argv)
@@ -76,6 +77,7 @@ search_MAP_best_params = FLAGS.search_MAP_best_params
 n_samples_2mcmc = FLAGS.n_samples
 thinning = FLAGS.thinning
 covid_vals_name = FLAGS.Y
+covariates_name = FLAGS.X
 network_names = FLAGS.network_list
 SEED = FLAGS.SEED
 print(network_names)
@@ -91,7 +93,9 @@ covid_vals = jnp.array(pd.read_csv(data_path + covid_vals_name, index_col='Unnam
 geo_clean = jnp.array(jnp.load(data_path + network_names[0]))
 sci_clean = jnp.array(jnp.load(data_path + network_names[1]))
 flights_clean = jnp.array(jnp.load(data_path + network_names[2]))
-
+if covariates_name:
+    covariates = jnp.array(pd.read_csv(data_path + covariates_name, index_col='Unnamed: 0').values)
+    _, q = covariates.shape
 # covid_vals = covid_vals[:,:100].copy()
 # geo_clean = geo_clean[:100, :100].copy()
 # sci_clean = sci_clean[:100, :100].copy()
@@ -333,34 +337,38 @@ batch = int(n_samples/n_batches)
 # my_model = models.NetworkSS_repr_etaRepr
 is_dense=False
 #%%
-mu_fixed=jnp.zeros((p,))
-mu_m=0.
-mu_s=1.
+
 
 scale_spike_fixed =0.0033341
 
 #%%
+
 # my_model_args = {"A_list":A_list, 
-#                 "eta0_0_m":0., "eta0_0_s":0.145, 
-#         "eta0_coefs_m":0., "eta0_coefs_s":0.145,
-#         "eta1_0_m":-2.197, "eta1_0_s":0.661, 
-#         "eta1_coefs_m":0., "eta1_coefs_s":0.661,
-#         "eta2_0_m":-9.368, "eta2_0_s":4.184, 
-#         "eta2_coefs_m":0., "eta2_coefs_s":4.184,
-#         "mu_m":0., "mu_s":1.} 
+#                 "eta0_0_m":0., "eta0_0_s":0.0015864, 
+#         "eta0_coefs_m":0., "eta0_coefs_s":0.0015864,
+#         "eta1_0_m":-2.1972246, "eta1_0_s":0.3, 
+#         "eta1_coefs_m":0., "eta1_coefs_s":0.3,
+#         "eta2_0_m":-7.7894737, "eta2_0_s":1.0263158, 
+#         "eta2_coefs_m":0., "eta2_coefs_s":1.0263158,}
+
 my_model_args = {"A_list":A_list, 
-                "eta0_0_m":0., "eta0_0_s":0.0015864, 
-        "eta0_coefs_m":0., "eta0_coefs_s":0.0015864,
-        "eta1_0_m":-2.1972246, "eta1_0_s":0.3, 
-        "eta1_coefs_m":0., "eta1_coefs_s":0.3,
-        "eta2_0_m":-7.7894737, "eta2_0_s":1.0263158, 
-        "eta2_coefs_m":0., "eta2_coefs_s":1.0263158,
-        "mu_m":0., "mu_s":1.}
+                "eta0_0_m":0., "eta0_0_s":0.003, 
+        "eta0_coefs_m":0., "eta0_coefs_s":0.003,
+        "eta1_0_m":-2.1972246, "eta1_0_s":0.65, 
+        "eta1_coefs_m":0., "eta1_coefs_s":0.65,
+        "eta2_0_m":-11.737, "eta2_0_s":4.184, 
+        "eta2_coefs_m":0., "eta2_coefs_s":4.184,
+        } 
+if covariates_name:
+     my_model_args["my_covariates"] = covariates
+     my_model_args.update({"b_m":0., "b_s":5.})
+else:
+     my_model_args.update({"mu_m":0., "mu_s":1.})
 
 
 
 fix_params = True
-fixed_params_dict = {"mu":mu_fixed, "scale_spike":scale_spike_fixed,
+fixed_params_dict = {"scale_spike":scale_spike_fixed,
                      "eta0_0":etas_MAPs["eta0_0"], 
                      "eta0_coefs":jnp.array(etas_MAPs["eta0_coefs"]),
                     "eta1_0":etas_MAPs["eta1_0"], 
@@ -374,13 +382,19 @@ fixed_params_dict = {"mu":mu_fixed, "scale_spike":scale_spike_fixed,
                     "tilde_eta2_0":(etas_MAPs["eta2_0"]-my_model_args["eta2_0_m"])/my_model_args["eta2_0_s"], 
                      "tilde_eta2_coefs":(jnp.array(etas_MAPs["eta2_coefs"])-my_model_args["eta2_coefs_m"])/my_model_args["eta2_coefs_s"]}
 
-blocked_params_list = ["mu", "scale_spike", 
+sqrt_diag_init = jnp.ones((p,))
+blocked_params_list = ["scale_spike", 
                        "tilde_eta0_0", "tilde_eta0_coefs", "tilde_eta1_0", "tilde_eta1_coefs", 
                        "tilde_eta2_0", "tilde_eta2_coefs",
                        "eta0_0", "eta0_coefs", "eta1_0", "eta1_coefs", 
                        "eta2_0", "eta2_coefs"]
 
-
+if covariates is not None:
+    pass
+else:
+    mu_fixed = jnp.zeros((p,))
+    fixed_params_dict['mu'] = mu_fixed
+    blocked_params_list.append("mu")
 
 
 if ((my_model == models.NetworkSS_repr_etaRepr_loglikRepr)|(my_model == models.NetworkSS_repr_loglikRepr)):
@@ -389,6 +403,15 @@ if ((my_model == models.NetworkSS_repr_etaRepr_loglikRepr)|(my_model == models.N
     my_model_args.update({"y_bar":y_bar, "S_bar":S_bar, "n":n, "p":p,})
 elif ((my_model == models.NetworkSS_repr_etaRepr)|(my_model == models.NetworkSS_repr)):
     my_model_args.update({"Y":covid_vals, "n":n, "p":p,})
+elif (my_model == models.NetworkSS_regression_repr_etaRepr_loglikRepr):
+    S_bar_y = covid_vals.T@covid_vals/n #(p,p)
+    S_bar_x = covariates.T@covariates/n #(q,q)
+    S_bar_yx = covid_vals.T@covariates/n #(p,q)
+    my_model_args.update({"S_bar_y":S_bar_y, "S_bar_x":S_bar_x, "S_bar_yx":S_bar_yx,
+                            "n":n, "p":p, "q":q})
+else:
+    raise ValueError("Insert valid model name")
+
 #%%
 u_init_cpu, rho_tilde_init_cpu, sqrt_diag_init_cpu = SVI_init_strategy_golazo_ss(A_list=A_list, mcmc_res=res, 
                                                                  fixed_params_dict=fixed_params_dict)
@@ -429,5 +452,5 @@ s = jax.device_put(mcmc.get_samples(), cpus[0])
 #     ss[k] = v[mask]
 f_dict = jax.device_put(fixed_params_dict, cpus[0])
 s.update({'fixed_params_dict':f_dict})
-with open(data_save_path + f'NetworkSS_2mcmc_p{p}_w{n_warmup}_s{n_samples}.sav' , 'wb') as f:
+with open(data_save_path + f'NetworkSS_2mcmc_p{p}_w{n_warmup}_s{n_samples}{'_regression' if covariates is not None else ''}.sav' , 'wb') as f:
     pickle.dump((s), f)

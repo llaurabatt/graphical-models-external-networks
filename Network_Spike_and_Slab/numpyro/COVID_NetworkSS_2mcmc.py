@@ -95,7 +95,7 @@ sci_clean = jnp.array(jnp.load(data_path + network_names[1]))
 flights_clean = jnp.array(jnp.load(data_path + network_names[2]))
 if covariates_name:
     covariates = jnp.array(pd.read_csv(data_path + covariates_name, index_col='Unnamed: 0').values)
-    _, q = covariates.shape
+    _, _, q = covariates.shape
 # covid_vals = covid_vals[:,:100].copy()
 # geo_clean = geo_clean[:100, :100].copy()
 # sci_clean = sci_clean[:100, :100].copy()
@@ -403,6 +403,8 @@ if ((my_model == models.NetworkSS_repr_etaRepr_loglikRepr)|(my_model == models.N
     my_model_args.update({"y_bar":y_bar, "S_bar":S_bar, "n":n, "p":p,})
 elif ((my_model == models.NetworkSS_repr_etaRepr)|(my_model == models.NetworkSS_repr)):
     my_model_args.update({"Y":covid_vals, "n":n, "p":p,})
+elif (my_model == models.NetworkSS_regression_repr_etaRepr):
+    my_model_args.update({"Y":covid_vals, "X":covariates, "q":q, "n":n, "p":p,})
 elif (my_model == models.NetworkSS_regression_repr_etaRepr_loglikRepr):
     S_bar_y = covid_vals.T@covid_vals/n #(p,p)
     S_bar_x = covariates.T@covariates/n #(q,q)
@@ -452,5 +454,5 @@ s = jax.device_put(mcmc.get_samples(), cpus[0])
 #     ss[k] = v[mask]
 f_dict = jax.device_put(fixed_params_dict, cpus[0])
 s.update({'fixed_params_dict':f_dict})
-with open(data_save_path + f'NetworkSS_2mcmc_p{p}_w{n_warmup}_s{n_samples}{'_regression' if covariates is not None else ''}.sav' , 'wb') as f:
+with open(data_save_path + f'NetworkSS_2mcmc_p{p}_w{n_warmup}_s{n_samples}{'_regression' if covariates is not None else ""}.sav' , 'wb') as f:
     pickle.dump((s), f)

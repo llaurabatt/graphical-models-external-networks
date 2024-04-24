@@ -55,7 +55,6 @@ def mcmc1_init(my_vals,
                n_samples,
                init_strategy:Optional[str]='init_to_value',
                thinning:Optional[int]=0,
-               my_covariates=None,
         ):
 
     #%%
@@ -68,8 +67,12 @@ def mcmc1_init(my_vals,
     import my_utils
     #%%
     n,p = my_vals.shape
-    if my_covariates is not None:
-        _, q = my_covariates.shape
+    
+    try:
+        my_covariates = my_model_args['my_covariates'] 
+        _,_, q = my_covariates.shape
+    except:
+        pass
     n_nets = len(my_model_args['A_list'])
     print(f"NetworkSS, n {n}, p {p}, number of networks {n_nets}")
     #%%
@@ -151,6 +154,8 @@ def mcmc1_init(my_vals,
         my_model_args.update({"y_bar":y_bar, "S_bar":S_bar, "n":n, "p":p,})
     elif ((my_model == models.NetworkSS_repr_etaRepr)|(my_model == models.NetworkSS_repr)):
         my_model_args.update({"Y":my_vals, "n":n, "p":p,})
+    elif (my_model == models.NetworkSS_regression_repr_etaRepr):
+        my_model_args.update({"Y":my_vals, "X":my_covariates,"q":q,"n":n, "p":p,})
     elif (my_model == models.NetworkSS_regression_repr_etaRepr_loglikRepr):
         S_bar_y = my_vals.T@my_vals/n #(p,p)
         S_bar_x = my_covariates.T@my_covariates/n #(q,q)
@@ -190,5 +195,5 @@ def mcmc1_init(my_vals,
     # for k,v in s.items():
     #     ss[k] = v[mask]
 
-    with open(data_save_path + f'NetworkSS_1mcmc_p{p}_w{n_warmup}_s{n_samples}_CP{n_samples}{'_regression' if my_covariates is not None else ''}.sav' , 'wb') as f:
+    with open(data_save_path + f'NetworkSS_1mcmc_p{p}_w{n_warmup}_s{n_samples}_CP{n_samples}{"_regression" if my_covariates is not None else ""}.sav' , 'wb') as f:
         pickle.dump((s), f)

@@ -69,7 +69,7 @@ def mcmc1_init(my_vals,
     n,p = my_vals.shape
     
     try:
-        my_covariates = my_model_args['my_covariates'] 
+        my_covariates = my_model_args['X'] 
         _,_, q = my_covariates.shape
     except:
         pass

@@ -78,7 +78,7 @@ geo_clean = jnp.array(jnp.load(data_path + network_names[0]))
 sci_clean = jnp.array(jnp.load(data_path + network_names[1]))
 flights_clean = jnp.array(jnp.load(data_path + network_names[2]))
 if covariates_name:
-    covariates = jnp.array(pd.read_csv(data_path + covariates_name, index_col='Unnamed: 0').values)
+    covariates = jnp.array(jnp.load(data_path + covariates_name))
 
 # covid_vals = covid_vals[:,:100].copy()
 # geo_clean = geo_clean[:100, :100].copy()
@@ -103,7 +103,7 @@ mcmc_args = {"A_list":A_list,
         } 
 
 if covariates_name is not None:
-     mcmc_args["my_covariates"] = covariates
+     mcmc_args["X"] = covariates
      mcmc_args.update({"b_m":0., "b_s":5.})
 else:
      mcmc_args.update({"mu_m":0., "mu_s":1.})

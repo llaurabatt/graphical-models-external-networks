@@ -94,7 +94,7 @@ geo_clean = jnp.array(jnp.load(data_path + network_names[0]))
 sci_clean = jnp.array(jnp.load(data_path + network_names[1]))
 flights_clean = jnp.array(jnp.load(data_path + network_names[2]))
 if covariates_name:
-    covariates = jnp.array(pd.read_csv(data_path + covariates_name, index_col='Unnamed: 0').values)
+    covariates = jnp.array(jnp.load(data_path + covariates_name))
     _, _, q = covariates.shape
 # covid_vals = covid_vals[:,:100].copy()
 # geo_clean = geo_clean[:100, :100].copy()
@@ -360,7 +360,7 @@ my_model_args = {"A_list":A_list,
         "eta2_coefs_m":0., "eta2_coefs_s":4.184,
         } 
 if covariates_name:
-     my_model_args["my_covariates"] = covariates
+     my_model_args["X"] = covariates
      my_model_args.update({"b_m":0., "b_s":5.})
 else:
      my_model_args.update({"mu_m":0., "mu_s":1.})

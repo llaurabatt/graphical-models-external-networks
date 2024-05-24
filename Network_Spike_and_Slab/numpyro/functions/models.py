@@ -527,8 +527,9 @@ def NetworkSS_regression_repr_etaRepr(A_list,
         sqrt_diag = sample("sqrt_diag", dist.InverseGamma(0.01, 0.01))
     
     with plate("covariates", q):
-        b_regression_coefs = sample("b_regression_coefs", dist.Normal(b_m, b_s))
-
+        tilde_b_regression_coefs = sample("tilde_b_regression_coefs", dist.Normal(b_m*100, b_s*100))
+    b_regression_coefs = tilde_b_regression_coefs / 100
+    b_regression_coefs = deterministic("b_regression_coefs", b_regression_coefs) 
 
     # means
     tril_idx = jnp.tril_indices(n=p, k=-1, m=p)
@@ -591,7 +592,8 @@ def NetworkSS_regression_repr_etaRepr(A_list,
     # Xb is p dim
 
     return {'n':n, "p":p, "q":q, 'Y':Y, 'X':X,
-            'theta':theta, 'b_regression_coefs':b_regression_coefs, 
+            'theta':theta, 'tilde_b_regression_coefs':tilde_b_regression_coefs, 
+            'b_regression_coefs':b_regression_coefs, 
             'rho':rho, 'eta1_0':eta1_0, 'eta1_coefs':eta1_coefs}
 
 def NetworkSS_regression_repr_etaRepr_loglikRepr(A_list,
@@ -634,7 +636,7 @@ def NetworkSS_regression_repr_etaRepr_loglikRepr(A_list,
         sqrt_diag = sample("sqrt_diag", dist.InverseGamma(0.01, 0.01))
     
     with plate("covariates", q):
-        b_regression_coefs = sample("b_regression_coefs", dist.Normal(b_m, b_s))
+        b_regression_coefs = sample("tilde_b_regression_coefs", dist.Normal(b_m, b_s))
 
     B_matrix = jnp.tile(b_regression_coefs, (p, 1))
 

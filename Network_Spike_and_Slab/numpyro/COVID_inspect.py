@@ -1,13 +1,8 @@
-#%%
-"""Main script for training the model."""
-import debugpy
-debugpy.listen(5678)
-print('Waiting for debugger')
-debugpy.wait_for_client()
-print('Debugger attached')
+
 #%%
 # imports
 from absl import flags
+#%%
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -30,15 +25,15 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'COVID_SS_etarepr_newprior_newlogrepr_seed6/' #'NetworkSS_results_etarepr_loglikrepr_newprior/'
-data_save_path2 = _ROOT_DIR + 'COVID_SS_etarepr_newprior_newlogrepr_seed9/'#'NetworkSS_results_etarepr_loglikrepr_newprior_seed6/'
+data_save_path = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_newprior_seed6/'#'COVID_SS_etarepr_newprior_newlogrepr_seed6/' #'NetworkSS_results_etarepr_loglikrepr_newprior/'
+data_save_path2 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_newprior_seed9/'#'COVID_SS_etarepr_newprior_newlogrepr_seed9/#'NetworkSS_results_etarepr_loglikrepr_newprior_seed6/'
 
 #%%
 
-with open(data_save_path + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000.sav', 'rb') as fr:
+with open(data_save_path + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
     res_ss_geo_sci = pickle.load(fr)
     
-with open(data_save_path2 + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000.sav', 'rb') as fr:
+with open(data_save_path2 + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
     res_ss_geo_sci2 = pickle.load(fr)
 
 uni_cols = ['eta0_0', 'eta1_0', 'eta2_0', 'tilde_eta0_0', 'tilde_eta1_0', 'tilde_eta2_0', 'potential_energy']
@@ -52,7 +47,7 @@ for k in res_ss_geo_sci2.keys():
 
 
 #%%
-all_res = {"NetworkSS_geo_sci":res_merge}
+all_res = {"NetworkSS_geo_sci":res_ss_geo_sci}
 net_no = 3
 #%%
 # NetworkSS_geo_sci 
@@ -62,14 +57,16 @@ names = ['geo', 'sci', 'flights']
 etas_NetworkSS = {}
 #%%
 for k in cols:
-    etas_NetworkSS[k] = {'mean': all_res['NetworkSS_geo_sci'][k].mean(0),#[0],
+    etas_NetworkSS[k] = {'start_val': all_res['NetworkSS_geo_sci'][k][0,:],
+                         'mean': all_res['NetworkSS_geo_sci'][k].mean(0),#[0],
               'ESS': numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_geo_sci'][k],0))['Param:0']['n_eff'],
                'r_hat': numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_geo_sci'][k],0))['Param:0']['r_hat'],
                 }
 #%%
 for k in cols_2:
     for net_ix in range(net_no):
-        etas_NetworkSS[f'{k}_{names[net_ix]}'] = {'mean': all_res['NetworkSS_geo_sci'][k].mean(0)[net_ix],
+        etas_NetworkSS[f'{k}_{names[net_ix]}'] = {'start_val': all_res['NetworkSS_geo_sci'][k][0,net_ix],
+                                                  'mean': all_res['NetworkSS_geo_sci'][k].mean(0)[net_ix],
                   'ESS': numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_geo_sci'][k][:,net_ix].flatten(),0))['Param:0']['n_eff'],
                    'r_hat': numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_geo_sci'][k][:,net_ix].flatten(),0))['Param:0']['r_hat'],
                     }
@@ -78,6 +75,13 @@ df_NetworkSS_etas_spec = pd.DataFrame.from_dict(etas_NetworkSS, orient='index')
 df_NetworkSS_etas_spec['r_hat-1']  = df_NetworkSS_etas_spec.r_hat -1 
 # %%
 display(df_NetworkSS_etas_spec)
+# %%
+reg_mean = res_ss_geo_sci['b_regression_coefs'].mean(axis=0)
+reg_mean2 = res_ss_geo_sci2['b_regression_coefs'].mean(axis=0)
+# %%
+reg_ESS = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0']['n_eff'] for b in res_ss_geo_sci['b_regression_coefs']])
+reg_ESS2 = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0']['n_eff'] for b in res_ss_geo_sci2['b_regression_coefs']])  
+
 # %%
 plt.suptitle('Potential energy')
 plt.plot(all_res['NetworkSS_geo_sci']['potential_energy'])
@@ -162,10 +166,10 @@ display(stats)
 # loglik(mu=mu, precision_matrix=precision_matrix, 
 #        y_bar=y_bar, S_bar=S_bar, n=n, p=p)
 # %%
-filename =  _ROOT_DIR + 'MERGE_3_6_COVID_SS_etarepr_newprior_newlogrepr/'
+filename =  _ROOT_DIR + 'MERGE_6_9_NetworkSS_results_regression_etarepr_newprior/'
 if not os.path.exists(filename):
     os.makedirs(filename, mode=0o777)
 
-with open(filename + f"Merge_NetworkSS_1mcmc_p332_w1000_s{res_merge['eta0_0'].shape[0]}.sav" , 'wb') as f:
+with open(filename + f"Merge_NetworkSS_1mcmc_p332_w1000_s{res_merge['eta0_0'].shape[0]}_regression.sav" , 'wb') as f:
     pickle.dump((res_merge), f)
 # %%

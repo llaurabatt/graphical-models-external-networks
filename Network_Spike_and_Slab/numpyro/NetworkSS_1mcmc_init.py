@@ -24,6 +24,7 @@ import numpyro.infer.util
 from jax.random import PRNGKey as Key
 from numpyro.util import enable_x64
 from numpyro.infer import init_to_feasible, init_to_value
+from numpyro.infer.util import log_density
 from typing import Optional
 
 #%%
@@ -105,9 +106,9 @@ def mcmc1_init(my_vals,
     # init strategy
     if init_strategy=='init_to_value':
         if my_covariates is not None:
-            my_init_strategy = init_to_value(values={'rho_tilde':rho_tilde_init, 
+            init_dict = {'rho_tilde':rho_tilde_init, 
                                                         'u':u_init,
-                                                        'b_regression_coefs':b_init, 
+                                                        'tilde_b_regression_coefs':b_init, 
                                                         'sqrt_diag':sqrt_diag_init, 
                                                         # 'eta0_0':my_model_args['eta0_0_m'],
                                                         # 'eta1_0':my_model_args['eta1_0_m'],
@@ -120,11 +121,12 @@ def mcmc1_init(my_vals,
                                                         'tilde_eta2_0':0.,                                     
                                                         'tilde_eta0_coefs':jnp.array([0.]*n_nets),
                                                         'tilde_eta1_coefs':jnp.array([0.]*n_nets),
-                                                        'tilde_eta2_coefs':jnp.array([0.]*n_nets),})
+                                                        'tilde_eta2_coefs':jnp.array([0.]*n_nets),}
+            my_init_strategy = init_to_value(values=init_dict)
             fixed_params_dict = {"scale_spike":scale_spike_fixed}
 
         else:
-            my_init_strategy = init_to_value(values={'rho_tilde':rho_tilde_init, 
+            init_dict = {'rho_tilde':rho_tilde_init, 
                                             'u':u_init,
                                             'mu':mu_init, 
                                             'sqrt_diag':sqrt_diag_init, 
@@ -139,9 +141,12 @@ def mcmc1_init(my_vals,
                                             'tilde_eta2_0':0.,                                     
                                             'tilde_eta0_coefs':jnp.array([0.]*n_nets),
                                             'tilde_eta1_coefs':jnp.array([0.]*n_nets),
-                                            'tilde_eta2_coefs':jnp.array([0.]*n_nets),})
+                                            'tilde_eta2_coefs':jnp.array([0.]*n_nets),}
+            my_init_strategy = init_to_value(values=init_dict)
 
             fixed_params_dict = {"scale_spike":scale_spike_fixed, "mu":mu_fixed}
+
+
 
     elif init_strategy=='init_to_feasible':
         my_init_strategy = init_to_feasible()
@@ -164,6 +169,12 @@ def mcmc1_init(my_vals,
                               "n":n, "p":p, "q":q})
     else:
         raise ValueError("Insert valid model name")
+    
+    if init_strategy=='init_to_value':
+        init_dict_energy = init_dict.copy() 
+        init_dict_energy.update(fixed_params_dict)
+        log_joint, _ = log_density(my_model,(), my_model_args, init_dict_energy)
+        print(f"Initial negative log joint: {-log_joint}")
 
 
     #%%

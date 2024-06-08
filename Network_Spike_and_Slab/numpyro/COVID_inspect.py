@@ -25,8 +25,8 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_newprior_seed6/'#'COVID_SS_etarepr_newprior_newlogrepr_seed6/' #'NetworkSS_results_etarepr_loglikrepr_newprior/'
-data_save_path2 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_newprior_seed9/'#'COVID_SS_etarepr_newprior_newlogrepr_seed9/#'NetworkSS_results_etarepr_loglikrepr_newprior_seed6/'
+data_save_path = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed6/'#'COVID_SS_etarepr_newprior_newlogrepr_seed6/' #'NetworkSS_results_etarepr_loglikrepr_newprior/'
+data_save_path2 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9/'#'COVID_SS_etarepr_newprior_newlogrepr_seed9/#'NetworkSS_results_etarepr_loglikrepr_newprior_seed6/'
 
 #%%
 
@@ -84,7 +84,10 @@ reg_ESS2 = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0
 
 # %%
 plt.suptitle('Potential energy')
-plt.plot(all_res['NetworkSS_geo_sci']['potential_energy'])
+plt.plot(res_ss_geo_sci['potential_energy'], label='seed 6')
+plt.plot(res_ss_geo_sci2['potential_energy'], label='seed 9')
+plt.legend()
+# plt.plot(all_res['NetworkSS_geo_sci']['potential_energy'])
 plt.show()
 # %%
 rho_no = all_res['NetworkSS_geo_sci']['rho_lt'].shape[1]

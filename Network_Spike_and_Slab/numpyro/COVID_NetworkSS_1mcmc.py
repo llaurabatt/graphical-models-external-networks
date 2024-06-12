@@ -45,6 +45,7 @@ flags.DEFINE_string('Y', 'COVID_332_meta_pruned.csv', 'Name of file where data f
 flags.DEFINE_string('X', None, 'Name of file where data for covariate variables is stored.')
 flags.DEFINE_string('model', 'models.NetworkSS_repr_etaRepr_loglikRepr', 'Name of model to be run.')
 flags.DEFINE_string('init_strategy', 'init_to_value', "Either 'init_to_value' (default) or 'init_to_feasible'.")
+flags.DEFINE_string('b_init', None, "Initial values for regression coefficents. Defaults to zeros.")
 flags.DEFINE_multi_string('network_list', ['GEO_meta_clean_332.npy', 'SCI_meta_clean_332.npy', 'flights_meta_clean_332.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
 flags.mark_flags_as_required(['n_samples', 'thinning', 'data_save_path', 'SEED'])
 FLAGS(sys.argv)
@@ -59,12 +60,14 @@ thinning = FLAGS.thinning
 batch_size = 500
 covid_vals_name = FLAGS.Y
 covariates_name = FLAGS.X
+b_init = FLAGS.b_init
 SEED = FLAGS.SEED
 init_strategy = FLAGS.init_strategy
 network_names = FLAGS.network_list
 print(network_names)
 print(FLAGS.model)
 print(init_strategy)
+print(f'Seed: {SEED}')
 
 
 data_save_path = FLAGS.data_save_path
@@ -79,6 +82,8 @@ sci_clean = jnp.array(jnp.load(data_path + network_names[1]))
 flights_clean = jnp.array(jnp.load(data_path + network_names[2]))
 if covariates_name:
     covariates = jnp.array(jnp.load(data_path + covariates_name))
+if b_init is not None:
+    b_init = jnp.array(pd.read_csv(data_path + b_init).values).flatten()
 
 # covid_vals = covid_vals[:,:100].copy()
 # geo_clean = geo_clean[:100, :100].copy()
@@ -131,7 +136,7 @@ else:
 
 mcmc1_init(my_model=my_model, thinning=thinning, my_vals=covid_vals,
         my_model_args=mcmc_args, n_samples=n_samples,
-        root_dir=_ROOT_DIR, data_save_path=data_save_path, seed=SEED, init_strategy=init_strategy)
+        root_dir=_ROOT_DIR, data_save_path=data_save_path, seed=SEED, init_strategy=init_strategy, b_init=b_init)
 
 # TO-DO: stop-and-start chain not working at the moment
 # if CP_init >= n_samples:

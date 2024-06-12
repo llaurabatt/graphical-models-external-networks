@@ -47,7 +47,7 @@ for k in res_ss_geo_sci2.keys():
 
 
 #%%
-all_res = {"NetworkSS_geo_sci":res_ss_geo_sci}
+all_res = {"NetworkSS_geo_sci":res_ss_geo_sci2}
 net_no = 3
 #%%
 # NetworkSS_geo_sci 

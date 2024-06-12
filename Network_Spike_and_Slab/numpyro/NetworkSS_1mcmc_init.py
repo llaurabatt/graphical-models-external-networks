@@ -56,6 +56,7 @@ def mcmc1_init(my_vals,
                n_samples,
                init_strategy:Optional[str]='init_to_value',
                thinning:Optional[int]=0,
+               b_init:Optional[jnp.array]=None,
         ):
 
     #%%
@@ -98,7 +99,8 @@ def mcmc1_init(my_vals,
     u_init = jnp.ones((int(p*(p-1)/2),))*0.5
     
     if my_covariates is not None:
-        b_init = jnp.zeros((q,))
+        if b_init is None:
+            b_init = jnp.zeros((q,))
     else:
         mu_fixed = mu_init = jnp.zeros((p,))
     sqrt_diag_init = jnp.ones((p,))
@@ -108,6 +110,7 @@ def mcmc1_init(my_vals,
         if my_covariates is not None:
             init_dict = {'rho_tilde':rho_tilde_init, 
                                                         'u':u_init,
+                                                        # "b_regression_coefs":b_init,
                                                         'tilde_b_regression_coefs':b_init, 
                                                         'sqrt_diag':sqrt_diag_init, 
                                                         # 'eta0_0':my_model_args['eta0_0_m'],

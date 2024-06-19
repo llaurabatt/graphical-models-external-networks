@@ -162,7 +162,7 @@ def mcmc1_init(my_vals,
         my_model_args.update({"y_bar":y_bar, "S_bar":S_bar, "n":n, "p":p,})
     elif ((my_model == models.NetworkSS_repr_etaRepr)|(my_model == models.NetworkSS_repr)):
         my_model_args.update({"Y":my_vals, "n":n, "p":p,})
-    elif (my_model == models.NetworkSS_regression_repr_etaRepr):
+    elif ((my_model == models.NetworkSS_regression_repr_etaRepr)|(my_model == models.NetworkSS_regression_repr_etaRepr_centered)):
         my_model_args.update({"Y":my_vals, "X":my_covariates,"q":q,"n":n, "p":p,})
     elif (my_model == models.NetworkSS_regression_repr_etaRepr_loglikRepr):
         S_bar_y = my_vals.T@my_vals/n #(p,p)

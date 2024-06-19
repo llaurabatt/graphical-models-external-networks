@@ -25,8 +25,8 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed6/'#'COVID_SS_etarepr_newprior_newlogrepr_seed6/' #'NetworkSS_results_etarepr_loglikrepr_newprior/'
-data_save_path2 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9/'#'COVID_SS_etarepr_newprior_newlogrepr_seed9/#'NetworkSS_results_etarepr_loglikrepr_newprior_seed6/'
+data_save_path = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed6_centered/'#'COVID_SS_etarepr_newprior_newlogrepr_seed6/' #'NetworkSS_results_etarepr_loglikrepr_newprior/'
+data_save_path2 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_tilde_init/'#'COVID_SS_etarepr_newprior_newlogrepr_seed9/#'NetworkSS_results_etarepr_loglikrepr_newprior_seed6/'
 
 #%%
 
@@ -47,7 +47,7 @@ for k in res_ss_geo_sci2.keys():
 
 
 #%%
-all_res = {"NetworkSS_geo_sci":res_ss_geo_sci2}
+all_res = {"NetworkSS_geo_sci":res_ss_geo_sci}
 net_no = 3
 #%%
 # NetworkSS_geo_sci 
@@ -79,27 +79,28 @@ display(df_NetworkSS_etas_spec)
 reg_mean = res_ss_geo_sci['b_regression_coefs'].mean(axis=0)
 reg_mean2 = res_ss_geo_sci2['b_regression_coefs'].mean(axis=0)
 # %%
-reg_ESS = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0']['n_eff'] for b in res_ss_geo_sci['b_regression_coefs']])
-reg_ESS2 = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0']['n_eff'] for b in res_ss_geo_sci2['b_regression_coefs']])  
-
+reg_ESS = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_geo_sci']['tilde_b_regression_coefs'],0))['Param:0']['n_eff'] for b in res_ss_geo_sci['b_regression_coefs']])
+reg_rhat = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_geo_sci']['tilde_b_regression_coefs'],0))['Param:0']['r_hat'] for b in res_ss_geo_sci['b_regression_coefs']])
+print('Mean ESS of regression coefs:', reg_ESS.mean())
+print('Mean r_hat of regression coefs:', reg_rhat.mean())
 # %%
 plt.suptitle('Potential energy')
 plt.plot(res_ss_geo_sci['potential_energy'], label='seed 6')
-plt.plot(res_ss_geo_sci2['potential_energy'], label='seed 9')
+# plt.plot(res_ss_geo_sci2['potential_energy'], label='seed 9')
 plt.legend()
 # plt.plot(all_res['NetworkSS_geo_sci']['potential_energy'])
 plt.show()
 # %%
-rho_no = all_res['NetworkSS_geo_sci']['rho_lt'].shape[1]
+rho_no = all_res['NetworkSS_geo_sci']['rho_tilde'].shape[1]
 rho_ESS = []
 for rho_ix in range(rho_no):
-    rho_ESS.append(numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_geo_sci']['rho_lt'][:,rho_ix],0))['Param:0']['n_eff'])
+    rho_ESS.append(numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_geo_sci']['rho_tilde'][:,rho_ix],0))['Param:0']['n_eff'])
 rho_ESS = jnp.array(rho_ESS)
 # %%
-rho_no = all_res['NetworkSS_geo_sci']['rho_lt'].shape[1]
+rho_no = all_res['NetworkSS_geo_sci']['rho_tilde'].shape[1]
 rho_rhat = []
 for rho_ix in range(rho_no):
-    rho_rhat.append(numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_geo_sci']['rho_lt'][:,rho_ix],0))['Param:0']['r_hat'])
+    rho_rhat.append(numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_geo_sci']['rho_tilde'][:,rho_ix],0))['Param:0']['r_hat'])
 rho_rhat = jnp.array(rho_rhat)
 # %%
 print('Total rho number:', len(rho_ESS))

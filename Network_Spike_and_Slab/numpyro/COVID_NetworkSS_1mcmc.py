@@ -46,6 +46,7 @@ flags.DEFINE_string('X', None, 'Name of file where data for covariate variables 
 flags.DEFINE_string('model', 'models.NetworkSS_repr_etaRepr_loglikRepr', 'Name of model to be run.')
 flags.DEFINE_string('init_strategy', 'init_to_value', "Either 'init_to_value' (default) or 'init_to_feasible'.")
 flags.DEFINE_string('b_init', None, "Initial values for regression coefficents. Defaults to zeros.")
+flags.DEFINE_string('bhat', None, "Value for centering regression coefficents. Defaults to None.")
 flags.DEFINE_multi_string('network_list', ['GEO_meta_clean_332.npy', 'SCI_meta_clean_332.npy', 'flights_meta_clean_332.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
 flags.mark_flags_as_required(['n_samples', 'thinning', 'data_save_path', 'SEED'])
 FLAGS(sys.argv)
@@ -61,6 +62,7 @@ batch_size = 500
 covid_vals_name = FLAGS.Y
 covariates_name = FLAGS.X
 b_init = FLAGS.b_init
+bhat = FLAGS.bhat
 SEED = FLAGS.SEED
 init_strategy = FLAGS.init_strategy
 network_names = FLAGS.network_list
@@ -84,6 +86,8 @@ if covariates_name:
     covariates = jnp.array(jnp.load(data_path + covariates_name))
 if b_init is not None:
     b_init = jnp.array(pd.read_csv(data_path + b_init).values).flatten()
+if bhat is not None:
+    bhat = jnp.array(pd.read_csv(data_path + bhat).values).flatten()
 
 # covid_vals = covid_vals[:,:100].copy()
 # geo_clean = geo_clean[:100, :100].copy()
@@ -110,6 +114,8 @@ mcmc_args = {"A_list":A_list,
 if covariates_name is not None:
      mcmc_args["X"] = covariates
      mcmc_args.update({"b_m":0., "b_s":5.})
+if bhat is not None:
+    mcmc_args['bhat'] = bhat
 else:
      mcmc_args.update({"mu_m":0., "mu_s":1.})
 

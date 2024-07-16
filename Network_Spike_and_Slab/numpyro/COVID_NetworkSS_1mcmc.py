@@ -21,7 +21,7 @@ import jax.numpy as jnp
 import numpyro.infer.util
 from numpyro.util import enable_x64
 from NetworkSS_1mcmc_init import mcmc1_init
-from NetworkSS_1mcmc_add import mcmc1_add
+# from NetworkSS_1mcmc_add import mcmc1_add
 #%%
 # paths
 _ROOT_DIR = "/home/paperspace/"
@@ -37,7 +37,8 @@ import my_utils
 
 # define flags
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('thinning', None, 'Thinning between MCMC samples.')
+flags.DEFINE_boolean('store_warmup', False, 'If true, it will store warmup samples.')
+flags.DEFINE_integer('thinning', 1, 'Thinning between MCMC samples. Defaults to 1.')
 flags.DEFINE_integer('n_samples', None, 'Number of total samples to run (excluding warmup).')
 flags.DEFINE_string('data_save_path', None, 'Path for saving results.')
 flags.DEFINE_integer('SEED', None, 'Random seed.')
@@ -66,6 +67,7 @@ bhat = FLAGS.bhat
 SEED = FLAGS.SEED
 init_strategy = FLAGS.init_strategy
 network_names = FLAGS.network_list
+store_warmup = FLAGS.store_warmup
 print(network_names)
 print(FLAGS.model)
 print(init_strategy)
@@ -78,6 +80,7 @@ if not os.path.exists(data_save_path):
 print(f'Save in {data_save_path}')
 
 # load data
+
 covid_vals = jnp.array(pd.read_csv(data_path + covid_vals_name, index_col='Unnamed: 0').values)
 geo_clean = jnp.array(jnp.load(data_path + network_names[0]))
 sci_clean = jnp.array(jnp.load(data_path + network_names[1]))
@@ -89,9 +92,13 @@ if b_init is not None:
 if bhat is not None:
     bhat = jnp.array(pd.read_csv(data_path + bhat).values).flatten()
 
-# covid_vals = covid_vals[:,:100].copy()
-# geo_clean = geo_clean[:100, :100].copy()
-# sci_clean = sci_clean[:100, :100].copy()
+# p_red = 50
+# covid_vals = covid_vals[:,:p_red].copy()
+# geo_clean = geo_clean[:p_red, :p_red].copy()
+# sci_clean = sci_clean[:p_red, :p_red].copy()
+# flights_clean = flights_clean[:p_red, :p_red].copy()
+# if covariates_name:
+#     covariates = covariates[:,:p_red,:].copy()
 A_list = [geo_clean, sci_clean, flights_clean]
 
 # mcmc_args = {"A_list":A_list, 
@@ -142,7 +149,9 @@ else:
 
 mcmc1_init(my_model=my_model, thinning=thinning, my_vals=covid_vals,
         my_model_args=mcmc_args, n_samples=n_samples,
-        root_dir=_ROOT_DIR, data_save_path=data_save_path, seed=SEED, init_strategy=init_strategy, b_init=b_init)
+        root_dir=_ROOT_DIR, data_save_path=data_save_path, seed=SEED, 
+        init_strategy=init_strategy, b_init=b_init,
+        store_warmup=store_warmup)
 
 # TO-DO: stop-and-start chain not working at the moment
 # if CP_init >= n_samples:

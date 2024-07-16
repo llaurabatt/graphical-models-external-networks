@@ -57,6 +57,7 @@ def mcmc1_init(my_vals,
                init_strategy:Optional[str]='init_to_value',
                thinning:Optional[int]=0,
                b_init:Optional[jnp.array]=None,
+               store_warmup:Optional[bool]=False,
         ):
 
     #%%
@@ -74,9 +75,11 @@ def mcmc1_init(my_vals,
         my_covariates = my_model_args['X'] 
         _,_, q = my_covariates.shape
     except:
-        pass
+        q = None
     n_nets = len(my_model_args['A_list'])
     print(f"NetworkSS, n {n}, p {p}, number of networks {n_nets}")
+    if q:
+        print(f"Number of covariates {q}")
     #%%
 
     #%%
@@ -189,9 +192,12 @@ def mcmc1_init(my_vals,
     #%%    
 
     nuts_kernel = NUTS(my_model_run, init_strategy=my_init_strategy, dense_mass=is_dense)
-    mcmc = MCMC(nuts_kernel, num_warmup=n_warmup, num_samples=batch, thinning=thinning)
+    mcmc = MCMC(nuts_kernel, num_warmup=n_warmup, num_samples=batch, thinning=thinning, num_chains=1, progress_bar=verbose)
+    if store_warmup:
+        mcmc.warmup(rng_key=Key(seed+3), **my_model_args, collect_warmup=True)
+        s_w = jax.device_put(mcmc.get_samples(), cpus[0])
     mcmc.run(rng_key = Key(seed), **my_model_args,
-            extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state'))
+            extra_fields=('potential_energy','accept_prob', 'num_steps', 'adapt_state', 'z'))
     # for b in range(n_batches-1):
     #     sample_batch = mcmc.get_samples()
     #     mcmc.post_warmup_state = mcmc.last_state
@@ -203,6 +209,8 @@ def mcmc1_init(my_vals,
 
     # mask = (jnp.arange(n_samples)%thinning==0)
     s = jax.device_put(mcmc.get_samples(), cpus[0])
+    if store_warmup:
+        s.update({'warmup':s_w})
     s.update({'potential_energy':mcmc.get_extra_fields()['potential_energy']})
     # why doesn't the following work with dictionary comprehension?
     # ss = {}

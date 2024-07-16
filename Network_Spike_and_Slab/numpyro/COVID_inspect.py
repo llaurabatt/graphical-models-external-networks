@@ -25,19 +25,25 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed6_centered/'#'COVID_SS_etarepr_newprior_newlogrepr_seed6/' #'NetworkSS_results_etarepr_loglikrepr_newprior/'
-data_save_path2 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_tilde_init/'#'COVID_SS_etarepr_newprior_newlogrepr_seed9/#'NetworkSS_results_etarepr_loglikrepr_newprior_seed6/'
+# data_save_path = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed6_centered_p50/'#'COVID_SS_etarepr_newprior_newlogrepr_seed6/' #'NetworkSS_results_etarepr_loglikrepr_newprior/'
+data_save_path2 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_centered_rotated/'#'COVID_SS_etarepr_newprior_newlogrepr_seed9/#'NetworkSS_results_etarepr_loglikrepr_newprior_seed6/'
 
 #%%
 
-with open(data_save_path + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
-    res_ss_geo_sci = pickle.load(fr)
+# with open(data_save_path + 'NetworkSS_1mcmc_p50_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
+#     res_ss_geo_sci = pickle.load(fr)
+
+# with open(data_save_path + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
+#     res_ss_geo_sci = pickle.load(fr)
     
 with open(data_save_path2 + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
     res_ss_geo_sci2 = pickle.load(fr)
 
+# with open(data_save_path2 + 'NetworkSS_1mcmc_p50_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
+#     res_ss_geo_sci2 = pickle.load(fr)
+
 uni_cols = ['eta0_0', 'eta1_0', 'eta2_0', 'tilde_eta0_0', 'tilde_eta1_0', 'tilde_eta2_0', 'potential_energy']
-res_ss_geo_sci = {k:v[:,None] if k in uni_cols else v for k,v in res_ss_geo_sci.items() }
+# res_ss_geo_sci = {k:v[:,None] if k in uni_cols else v for k,v in res_ss_geo_sci.items() }
 res_ss_geo_sci2 = {k:v[:,None] if k in uni_cols else v for k,v in res_ss_geo_sci2.items() }
 
 #%%
@@ -47,7 +53,7 @@ for k in res_ss_geo_sci2.keys():
 
 
 #%%
-all_res = {"NetworkSS_geo_sci":res_ss_geo_sci}
+all_res = {"NetworkSS_geo_sci":res_ss_geo_sci2}
 net_no = 3
 #%%
 # NetworkSS_geo_sci 
@@ -76,19 +82,54 @@ df_NetworkSS_etas_spec['r_hat-1']  = df_NetworkSS_etas_spec.r_hat -1
 # %%
 display(df_NetworkSS_etas_spec)
 # %%
-reg_mean = res_ss_geo_sci['b_regression_coefs'].mean(axis=0)
-reg_mean2 = res_ss_geo_sci2['b_regression_coefs'].mean(axis=0)
+# reg_mean = res_ss_geo_sci['tilde_b_regression_coefs'].mean(axis=0)
+reg_mean2 = res_ss_geo_sci2['tilde_b_regression_coefs'].mean(axis=0)
 # %%
-reg_ESS = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_geo_sci']['tilde_b_regression_coefs'],0))['Param:0']['n_eff'] for b in res_ss_geo_sci['b_regression_coefs']])
-reg_rhat = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(all_res['NetworkSS_geo_sci']['tilde_b_regression_coefs'],0))['Param:0']['r_hat'] for b in res_ss_geo_sci['b_regression_coefs']])
+u_ESS = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0']['n_eff'] for b in res_ss_geo_sci2['u'].T])
+
+reg_ESS = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0']['n_eff'] for b in res_ss_geo_sci2['tilde_b_regression_coefs'].T])
+reg_rhat = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0']['r_hat'] for b in res_ss_geo_sci2['tilde_b_regression_coefs'].T])
+print('Mean ESS of u:', u_ESS.mean())
 print('Mean ESS of regression coefs:', reg_ESS.mean())
 print('Mean r_hat of regression coefs:', reg_rhat.mean())
+
+# %%
+plt.suptitle('Trace plot first u')
+plt.plot(all_res['NetworkSS_geo_sci']['u'][:,0])
+plt.legend()
+plt.show()
+# %%
+plt.suptitle('Trace plot first sqrt_diag')
+plt.plot(all_res['NetworkSS_geo_sci']['sqrt_diag'][:,0])
+plt.legend()
+plt.show()
+# %%
+plt.suptitle('Trace plot first rho tilde')
+plt.plot(all_res['NetworkSS_geo_sci']['rho_tilde'][:,0])
+plt.legend()
+plt.show()
+# %%
+plt.suptitle('Trace plot first b tilde')
+plt.plot(all_res['NetworkSS_geo_sci']['tilde_b_regression_coefs'][:,0])
+plt.legend()
+plt.show()
+# %%
+for k in cols:
+    plt.suptitle(f'Trace plot {k}')
+    plt.plot(all_res['NetworkSS_geo_sci'][f'{k}'])
+    plt.legend()
+    plt.show()
+# %%
+for k in cols_2:
+    for net_ix in range(net_no):
+        plt.suptitle(f'Trace plot {k} Network {net_ix}')
+        plt.plot(all_res['NetworkSS_geo_sci'][k][:,net_ix])
+        plt.legend()
+        plt.show()
 # %%
 plt.suptitle('Potential energy')
-plt.plot(res_ss_geo_sci['potential_energy'], label='seed 6')
-# plt.plot(res_ss_geo_sci2['potential_energy'], label='seed 9')
+plt.plot(res_ss_geo_sci['potential_energy'], label='seed 9')
 plt.legend()
-# plt.plot(all_res['NetworkSS_geo_sci']['potential_energy'])
 plt.show()
 # %%
 rho_no = all_res['NetworkSS_geo_sci']['rho_tilde'].shape[1]

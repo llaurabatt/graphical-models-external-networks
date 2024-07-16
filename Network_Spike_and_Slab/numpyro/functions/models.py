@@ -527,7 +527,8 @@ def NetworkSS_regression_repr_etaRepr_centered(A_list,
     
     with plate("covariates", q):
         tilde_b_regression_coefs = sample("tilde_b_regression_coefs", dist.Normal((bhat-b_m), b_s))
-    b_regression_coefs = bhat - tilde_b_regression_coefs
+        assert tilde_b_regression_coefs.shape == (q,)
+    b_regression_coefs = (bhat - tilde_b_regression_coefs)
     b_regression_coefs = deterministic("b_regression_coefs", b_regression_coefs) 
 
     # means

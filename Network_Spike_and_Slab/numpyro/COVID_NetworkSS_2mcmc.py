@@ -64,6 +64,8 @@ flags.DEFINE_integer('n_samples', 2000, 'Number of total samples to run (excludi
 flags.DEFINE_string('model', 'models.NetworkSS_repr_etaRepr_loglikRepr', 'Name of model to be run.')
 flags.DEFINE_string('Y', 'COVID_332_meta_pruned.csv', 'Name of file where data for dependent variable is stored.')
 flags.DEFINE_string('X', None, 'Name of file where data for covariate variables is stored.')
+flags.DEFINE_string('b_init', None, "Initial values for regression coefficents. Defaults to zeros.")
+flags.DEFINE_string('bhat', None, "Value for centering regression coefficents. Defaults to None.")
 flags.DEFINE_multi_string('network_list', ['GEO_meta_clean_332.npy', 'SCI_meta_clean_332.npy', 'flights_meta_clean_332.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
 flags.mark_flags_as_required(['thinning', 'SEED', 'data_save_path'])
 FLAGS(sys.argv)
@@ -78,10 +80,13 @@ n_samples_2mcmc = FLAGS.n_samples
 thinning = FLAGS.thinning
 covid_vals_name = FLAGS.Y
 covariates_name = FLAGS.X
+b_init = FLAGS.b_init
+bhat = FLAGS.bhat
 network_names = FLAGS.network_list
 SEED = FLAGS.SEED
 print(network_names)
 print(FLAGS.model)
+print(f'Seed: {SEED}')
 
 data_save_path = FLAGS.data_save_path
 if not os.path.exists(data_save_path):
@@ -96,6 +101,14 @@ flights_clean = jnp.array(jnp.load(data_path + network_names[2]))
 if covariates_name:
     covariates = jnp.array(jnp.load(data_path + covariates_name))
     _, _, q = covariates.shape
+else:
+    q = None
+
+if b_init is not None:
+    b_init = jnp.array(pd.read_csv(data_path + b_init).values).flatten()
+if bhat is not None:
+    bhat = jnp.array(pd.read_csv(data_path + bhat).values).flatten()
+
 # covid_vals = covid_vals[:,:100].copy()
 # geo_clean = geo_clean[:100, :100].copy()
 # sci_clean = sci_clean[:100, :100].copy()
@@ -107,6 +120,8 @@ A_list = [geo_clean, sci_clean, flights_clean]
 n,p = covid_vals.shape
 n_nets = len(A_list)
 print(f"NetworkSS, n {n}, p {p}, number of networks {n_nets}")
+if q:
+    print(f"Number of covariates {q}")
 #%%
 # get init file
 
@@ -362,8 +377,11 @@ my_model_args = {"A_list":A_list,
 if covariates_name:
      my_model_args["X"] = covariates
      my_model_args.update({"b_m":0., "b_s":5.})
+if bhat is not None:
+    my_model_args['bhat'] = bhat
 else:
-     my_model_args.update({"mu_m":0., "mu_s":1.})
+    my_model_args.update({"mu_m":0., "mu_s":1.})
+
 
 
 
@@ -403,7 +421,7 @@ if ((my_model == models.NetworkSS_repr_etaRepr_loglikRepr)|(my_model == models.N
     my_model_args.update({"y_bar":y_bar, "S_bar":S_bar, "n":n, "p":p,})
 elif ((my_model == models.NetworkSS_repr_etaRepr)|(my_model == models.NetworkSS_repr)):
     my_model_args.update({"Y":covid_vals, "n":n, "p":p,})
-elif (my_model == models.NetworkSS_regression_repr_etaRepr):
+elif ((my_model == models.NetworkSS_regression_repr_etaRepr)|(my_model == models.NetworkSS_regression_repr_etaRepr_centered)):
     my_model_args.update({"Y":covid_vals, "X":covariates, "q":q, "n":n, "p":p,})
 elif (my_model == models.NetworkSS_regression_repr_etaRepr_loglikRepr):
     S_bar_y = covid_vals.T@covid_vals/n #(p,p)
@@ -421,9 +439,15 @@ u_init_cpu, rho_tilde_init_cpu, sqrt_diag_init_cpu = SVI_init_strategy_golazo_ss
 u_init = jax.device_put(u_init_cpu, gpus[0])
 rho_tilde_init = jax.device_put(rho_tilde_init_cpu, gpus[0])
 sqrt_diag_init = jax.device_put(sqrt_diag_init_cpu, gpus[0])
+init_dict = {'u':u_init, 'rho_tilde':rho_tilde_init,'sqrt_diag':sqrt_diag_init}
 #%%
-my_init_strategy = init_to_value(values={'u':u_init, 'rho_tilde':rho_tilde_init,'sqrt_diag':sqrt_diag_init})
 
+if covariates is not None:
+    if b_init is None:
+        b_init = jnp.zeros((q,))
+    init_dict.update({'tilde_b_regression_coefs':b_init})
+
+my_init_strategy = init_to_value(values=init_dict)
 #%%
 # run model
 if fix_params:
@@ -454,5 +478,5 @@ s = jax.device_put(mcmc.get_samples(), cpus[0])
 #     ss[k] = v[mask]
 f_dict = jax.device_put(fixed_params_dict, cpus[0])
 s.update({'fixed_params_dict':f_dict})
-with open(data_save_path + f'NetworkSS_2mcmc_p{p}_w{n_warmup}_s{n_samples}{'_regression' if covariates is not None else ""}.sav' , 'wb') as f:
+with open(data_save_path + f'NetworkSS_2mcmc_p{p}_w{n_warmup}_s{n_samples}{"_regression" if covariates is not None else ""}.sav' , 'wb') as f:
     pickle.dump((s), f)

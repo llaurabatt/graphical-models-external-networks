@@ -25,35 +25,32 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-# data_save_path = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed6_centered_p50/'#'COVID_SS_etarepr_newprior_newlogrepr_seed6/' #'NetworkSS_results_etarepr_loglikrepr_newprior/'
-data_save_path2 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_centered_rotated/'#'COVID_SS_etarepr_newprior_newlogrepr_seed9/#'NetworkSS_results_etarepr_loglikrepr_newprior_seed6/'
+data_save_path = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed6_centered_rotated/'
+data_save_path2 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_centered_rotated/'
 
 #%%
 
-# with open(data_save_path + 'NetworkSS_1mcmc_p50_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
-#     res_ss_geo_sci = pickle.load(fr)
 
-# with open(data_save_path + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
-#     res_ss_geo_sci = pickle.load(fr)
-    
+with open(data_save_path + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
+    res_ss_geo_sci = pickle.load(fr)
+
 with open(data_save_path2 + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
     res_ss_geo_sci2 = pickle.load(fr)
 
-# with open(data_save_path2 + 'NetworkSS_1mcmc_p50_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
-#     res_ss_geo_sci2 = pickle.load(fr)
 
 uni_cols = ['eta0_0', 'eta1_0', 'eta2_0', 'tilde_eta0_0', 'tilde_eta1_0', 'tilde_eta2_0', 'potential_energy']
-# res_ss_geo_sci = {k:v[:,None] if k in uni_cols else v for k,v in res_ss_geo_sci.items() }
+res_ss_geo_sci = {k:v[:,None] if k in uni_cols else v for k,v in res_ss_geo_sci.items() }
 res_ss_geo_sci2 = {k:v[:,None] if k in uni_cols else v for k,v in res_ss_geo_sci2.items() }
 
 #%%
 res_merge = {} 
 for k in res_ss_geo_sci2.keys():
-    res_merge[k] = jnp.vstack([res_ss_geo_sci[k], res_ss_geo_sci2[k]])
+    if k != 'warmup':
+        res_merge[k] = jnp.vstack([res_ss_geo_sci[k], res_ss_geo_sci2[k]])
 
 
 #%%
-all_res = {"NetworkSS_geo_sci":res_ss_geo_sci2}
+all_res = {"NetworkSS_geo_sci":res_merge}
 net_no = 3
 #%%
 # NetworkSS_geo_sci 
@@ -128,8 +125,8 @@ for k in cols_2:
         plt.show()
 # %%
 plt.suptitle('Potential energy')
-plt.plot(res_ss_geo_sci['potential_energy'], label='seed 9')
-plt.legend()
+plt.plot(all_res['NetworkSS_geo_sci']['potential_energy'], label='seed 9')
+# plt.legend()
 plt.show()
 # %%
 rho_no = all_res['NetworkSS_geo_sci']['rho_tilde'].shape[1]
@@ -211,7 +208,7 @@ display(stats)
 # loglik(mu=mu, precision_matrix=precision_matrix, 
 #        y_bar=y_bar, S_bar=S_bar, n=n, p=p)
 # %%
-filename =  _ROOT_DIR + 'MERGE_6_9_NetworkSS_results_regression_etarepr_newprior/'
+filename =  _ROOT_DIR + 'MERGE_6_9_NetworkSS_results_regression_etarepr_brepr_newprior_centered_rotated/'
 if not os.path.exists(filename):
     os.makedirs(filename, mode=0o777)
 

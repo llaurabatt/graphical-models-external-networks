@@ -87,6 +87,7 @@ sci_clean = jnp.array(jnp.load(data_path + network_names[1]))
 flights_clean = jnp.array(jnp.load(data_path + network_names[2]))
 if covariates_name:
     covariates = jnp.array(jnp.load(data_path + covariates_name))
+    _, _, q = covariates.shape
 if b_init is not None:
     b_init = jnp.array(pd.read_csv(data_path + b_init).values).flatten()
 if bhat is not None:

@@ -60,6 +60,7 @@ flags.DEFINE_boolean('search_MAP_best_params', False, 'If true, it will optimise
 flags.DEFINE_integer('thinning', None, 'Thinning between MCMC samples.')
 flags.DEFINE_integer('SEED', None, 'Random seed.')
 flags.DEFINE_string('data_save_path', None, 'Path for saving results.')
+flags.DEFINE_float('scale_spike_fixed', 0.0033341, 'Fixed value of the scale of the spike.')
 flags.DEFINE_integer('n_samples', 2000, 'Number of total samples to run (excluding warmup).')
 flags.DEFINE_string('model', 'models.NetworkSS_repr_etaRepr_loglikRepr', 'Name of model to be run.')
 flags.DEFINE_string('Y', 'COVID_332_meta_pruned.csv', 'Name of file where data for dependent variable is stored.')
@@ -78,6 +79,7 @@ my_model = eval(FLAGS.model)
 search_MAP_best_params = FLAGS.search_MAP_best_params
 n_samples_2mcmc = FLAGS.n_samples
 thinning = FLAGS.thinning
+scale_spike_fixed = FLAGS.scale_spike_fixed
 covid_vals_name = FLAGS.Y
 covariates_name = FLAGS.X
 b_init = FLAGS.b_init
@@ -354,7 +356,7 @@ is_dense=False
 #%%
 
 
-scale_spike_fixed =0.0033341
+# scale_spike_fixed =0.0033341
 
 #%%
 

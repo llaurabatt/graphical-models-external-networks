@@ -52,6 +52,7 @@ def mcmc1_init(my_vals,
                my_model_args,
                root_dir,
                data_save_path,
+               scale_spike_fixed,
                seed,
                n_samples,
                init_strategy:Optional[str]='init_to_value',
@@ -94,7 +95,7 @@ def mcmc1_init(my_vals,
     #%%
     ## first element for p=10, second element for p=50
     fix_params=True
-    scale_spike_fixed =0.0033341
+    # scale_spike_fixed =0.0033341
     
     blocked_params_list = ["scale_spike", "mu"]
 
@@ -130,6 +131,7 @@ def mcmc1_init(my_vals,
                                                         'tilde_eta2_coefs':jnp.array([0.]*n_nets),}
             my_init_strategy = init_to_value(values=init_dict)
             fixed_params_dict = {"scale_spike":scale_spike_fixed}
+            print(f"Fixed scale_spike: {scale_spike_fixed}")
 
         else:
             init_dict = {'rho_tilde':rho_tilde_init, 

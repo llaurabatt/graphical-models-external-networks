@@ -30,8 +30,7 @@ sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_an
 
 data_path = './Data/COVID/Pre-processed Data/'
 data_save_path = _ROOT_DIR + 'MERGE_3_6_COVID_SS_etarepr_newprior_newlogrepr/'
-if not os.path.exists(data_save_path + 'Figures/'):
-    os.makedirs(data_save_path + 'Figures/', mode=0o777)
+
 # load models and functions
 import models
 import my_utils
@@ -50,6 +49,9 @@ FLAGS(sys.argv)
 # load data
 covid_vals_name = FLAGS.Y
 network_names = FLAGS.network_list
+data_save_path = FLAGS.data_save_path
+if not os.path.exists(data_save_path + 'Figures/'):
+    os.makedirs(data_save_path + 'Figures/', mode=0o777)
 print(network_names)
 
 covid_vals = jnp.array(pd.read_csv(data_path + covid_vals_name, index_col='Unnamed: 0').values)
@@ -87,10 +89,10 @@ outputs = {"NetworkSS_geo_sci":output_dict_ss_geo_sci }
 with open(FLAGS.mcmc1_path, 'rb') as fr:
     res_ss_geo_sci = pickle.load(fr)
 
-# rhos = pd.DataFrame(res_ss_geo_sci['rho_lt'])
-# rhos.to_csv(data_save_path + 'rho_lt_mcmc1.csv')
-# del rhos
-# print('rhos saved!')
+rhos = pd.DataFrame(res_ss_geo_sci['rho_lt'])
+rhos.to_csv(data_save_path + 'rho_lt_mcmc1.csv')
+del rhos
+print('rhos saved!')
 
 all_res = {"NetworkSS_geo_sci":res_ss_geo_sci}
 #%%

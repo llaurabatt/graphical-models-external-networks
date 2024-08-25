@@ -25,22 +25,26 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed6_centered_rotated/'
+data_save_path = _ROOT_DIR + 'MERGE_6_9_NetworkSS_results_regression_etarepr_brepr_newprior_centered_rotated/'
+# data_save_path = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed6_centered_rotated/'
 data_save_path2 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_centered_rotated/'
 
 #%%
 
 
-with open(data_save_path + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
+with open(data_save_path + 'NetworkSS_2mcmc_p332_w1000_s10000_regression.sav', 'rb') as fr:
     res_ss_geo_sci = pickle.load(fr)
 
-with open(data_save_path2 + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
-    res_ss_geo_sci2 = pickle.load(fr)
+# with open(data_save_path + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
+#     res_ss_geo_sci = pickle.load(fr)
+
+# with open(data_save_path2 + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
+#     res_ss_geo_sci2 = pickle.load(fr)
 
 
 uni_cols = ['eta0_0', 'eta1_0', 'eta2_0', 'tilde_eta0_0', 'tilde_eta1_0', 'tilde_eta2_0', 'potential_energy']
 res_ss_geo_sci = {k:v[:,None] if k in uni_cols else v for k,v in res_ss_geo_sci.items() }
-res_ss_geo_sci2 = {k:v[:,None] if k in uni_cols else v for k,v in res_ss_geo_sci2.items() }
+# res_ss_geo_sci2 = {k:v[:,None] if k in uni_cols else v for k,v in res_ss_geo_sci2.items() }
 
 #%%
 res_merge = {} 
@@ -50,7 +54,7 @@ for k in res_ss_geo_sci2.keys():
 
 
 #%%
-all_res = {"NetworkSS_geo_sci":res_merge}
+all_res = {"NetworkSS_geo_sci":res_ss_geo_sci}
 net_no = 3
 #%%
 # NetworkSS_geo_sci 
@@ -79,13 +83,13 @@ df_NetworkSS_etas_spec['r_hat-1']  = df_NetworkSS_etas_spec.r_hat -1
 # %%
 display(df_NetworkSS_etas_spec)
 # %%
-# reg_mean = res_ss_geo_sci['tilde_b_regression_coefs'].mean(axis=0)
-reg_mean2 = res_ss_geo_sci2['tilde_b_regression_coefs'].mean(axis=0)
+reg_mean = all_res['NetworkSS_geo_sci']['tilde_b_regression_coefs'].mean(axis=0)
+# reg_mean2 = res_ss_geo_sci2['tilde_b_regression_coefs'].mean(axis=0)
 # %%
-u_ESS = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0']['n_eff'] for b in res_ss_geo_sci2['u'].T])
+u_ESS = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0']['n_eff'] for b in all_res['NetworkSS_geo_sci']['u'].T])
 
-reg_ESS = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0']['n_eff'] for b in res_ss_geo_sci2['tilde_b_regression_coefs'].T])
-reg_rhat = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0']['r_hat'] for b in res_ss_geo_sci2['tilde_b_regression_coefs'].T])
+reg_ESS = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0']['n_eff'] for b in all_res['NetworkSS_geo_sci']['tilde_b_regression_coefs'].T])
+reg_rhat = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0']['r_hat'] for b in all_res['NetworkSS_geo_sci']['tilde_b_regression_coefs'].T])
 print('Mean ESS of u:', u_ESS.mean())
 print('Mean ESS of regression coefs:', reg_ESS.mean())
 print('Mean r_hat of regression coefs:', reg_rhat.mean())

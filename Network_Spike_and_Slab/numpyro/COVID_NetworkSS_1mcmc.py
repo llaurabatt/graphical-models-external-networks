@@ -39,6 +39,7 @@ import my_utils
 FLAGS = flags.FLAGS
 flags.DEFINE_boolean('store_warmup', False, 'If true, it will store warmup samples.')
 flags.DEFINE_integer('thinning', 1, 'Thinning between MCMC samples. Defaults to 1.')
+flags.DEFINE_float('scale_spike_fixed', 0.0033341, 'Fixed value of the scale of the spike.')
 flags.DEFINE_integer('n_samples', None, 'Number of total samples to run (excluding warmup).')
 flags.DEFINE_string('data_save_path', None, 'Path for saving results.')
 flags.DEFINE_integer('SEED', None, 'Random seed.')
@@ -60,6 +61,7 @@ n_samples = FLAGS.n_samples
 my_model = eval(FLAGS.model)
 thinning = FLAGS.thinning
 batch_size = 500
+scale_spike_fixed = FLAGS.scale_spike_fixed
 covid_vals_name = FLAGS.Y
 covariates_name = FLAGS.X
 b_init = FLAGS.b_init
@@ -149,7 +151,7 @@ else:
 #     CP_init = 0
 
 mcmc1_init(my_model=my_model, thinning=thinning, my_vals=covid_vals,
-        my_model_args=mcmc_args, n_samples=n_samples,
+        my_model_args=mcmc_args, scale_spike_fixed=scale_spike_fixed, n_samples=n_samples,
         root_dir=_ROOT_DIR, data_save_path=data_save_path, seed=SEED, 
         init_strategy=init_strategy, b_init=b_init,
         store_warmup=store_warmup)

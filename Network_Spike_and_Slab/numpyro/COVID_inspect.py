@@ -24,10 +24,14 @@ _ROOT_DIR = "/home/paperspace/"
 os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
+data_save_path_COVID_merge = _ROOT_DIR + 'MERGE_6_9_NetworkSS_results_regression_etarepr_brepr_newprior_centered_rotated/'
+data_save_path_COVID_9 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_centered_rotated/'
+data_save_path_COVID_9_spikedivide5 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_centered_rotated_spikedivide5/'
+data_save_path_COVID_9_spiketimes5 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_centered_rotated_spiketimes5/'
+
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'MERGE_6_9_NetworkSS_results_regression_etarepr_brepr_newprior_centered_rotated/'
-# data_save_path = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed6_centered_rotated/'
-data_save_path2 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_centered_rotated/'
+data_save_path = data_save_path_COVID_9_spikedivide5 
+# data_save_path2 = 
 
 #%%
 

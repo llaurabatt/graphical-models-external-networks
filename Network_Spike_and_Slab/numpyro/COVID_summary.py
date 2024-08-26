@@ -29,7 +29,8 @@ os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'MERGE_3_6_COVID_SS_etarepr_newprior_newlogrepr/'
+data_save_path = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_centered_rotated_spikedivide5/'
+# data_save_path = _ROOT_DIR + 'MERGE_3_6_COVID_SS_etarepr_newprior_newlogrepr/'
 
 # load models and functions
 import models
@@ -41,6 +42,7 @@ flags.DEFINE_string('mcmc1_path', None, '1mcmc path to generate plots from.')
 flags.DEFINE_string('mcmc2_path', None, '2mcmc path to generate plots from.')
 flags.DEFINE_boolean('get_probs', True, 'Compute mean slab, w slab, prob slab for 1mcmc.')
 flags.DEFINE_string('data_save_path', data_save_path, 'Path where to save figure folder.')
+flags.DEFINE_float('scale_spike_fixed', 0.0033341, 'Fixed value of the scale of the spike.')
 flags.DEFINE_string('Y', 'COVID_332_meta_pruned.csv', 'Name of file where data for dependent variable is stored.')
 flags.DEFINE_multi_string('network_list', ['GEO_meta_clean_332.npy', 'SCI_meta_clean_332.npy', 'flights_meta_clean_332.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
 flags.mark_flags_as_required(['mcmc1_path', 'mcmc2_path'])
@@ -49,6 +51,7 @@ FLAGS(sys.argv)
 # load data
 covid_vals_name = FLAGS.Y
 network_names = FLAGS.network_list
+scale_spike_fixed = FLAGS.scale_spike_fixed
 data_save_path = FLAGS.data_save_path
 if not os.path.exists(data_save_path + 'Figures/'):
     os.makedirs(data_save_path + 'Figures/', mode=0o777)
@@ -64,7 +67,7 @@ flights_clean = jnp.array(jnp.load(data_path + network_names[2]))
 # sci_clean = sci_clean[:100, :100].copy()
 
 net_no = len(network_names)
-scale_spike_fixed =0.003
+# scale_spike_fixed =0.003
 
 n,p = covid_vals.shape
 A_list = [geo_clean, sci_clean, flights_clean]
@@ -89,13 +92,20 @@ outputs = {"NetworkSS_geo_sci":output_dict_ss_geo_sci }
 with open(FLAGS.mcmc1_path, 'rb') as fr:
     res_ss_geo_sci = pickle.load(fr)
 
-rhos = pd.DataFrame(res_ss_geo_sci['rho_lt'])
-rhos.to_csv(data_save_path + 'rho_lt_mcmc1.csv')
-del rhos
-print('rhos saved!')
+# rhos = pd.DataFrame(res_ss_geo_sci['rho_lt'])
+# rhos.to_csv(data_save_path + 'rho_lt_mcmc1.csv')
+# del rhos
+# print('rhos saved!')
+for k in res_ss_geo_sci.keys():
+    if k != 'warmup':
+        try:
+            _,_ = res_ss_geo_sci[k].shape
+        except:
+            res_ss_geo_sci[k] = res_ss_geo_sci[k].reshape(-1,1)
 
 all_res = {"NetworkSS_geo_sci":res_ss_geo_sci}
 #%%
+print(f'scale spike fixed is: {scale_spike_fixed}')
 if FLAGS.get_probs:
     for i, res in all_res.items():
         print(i)

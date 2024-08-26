@@ -146,11 +146,18 @@ for f in os.listdir(data_save_path):
                 res = jax.device_put(pickle.load(fr), cpus[0])
     else:
         if '1mcmc' in f: 
-            if re.search(fr'.*_CP{CP_max}\.sav$', f):
+            if re.search(fr'.*_CP{CP_max}.*\.sav$', f):
                 print(f'Init 2mcmc from {f}')
                 with open(data_save_path + f, 'rb') as fr:
                     res = jax.device_put(pickle.load(fr), cpus[0])
 
+################## RESHAPE ###############
+for k in res.keys():
+    if k != 'warmup':
+        try:
+            _,_ = res[k].shape
+        except:
+            res[k] = res[k].reshape(-1,1)
 ################## MAP ###############
 
 #%% 

@@ -57,6 +57,7 @@ import my_utils
 # define flags
 FLAGS = flags.FLAGS
 flags.DEFINE_boolean('search_MAP_best_params', False, 'If true, it will optimise kernel and bandwith for KDE on etas.')
+flags.DEFINE_boolean('no_networks', False, 'If true, network information will not be used.')
 flags.DEFINE_integer('thinning', None, 'Thinning between MCMC samples.')
 flags.DEFINE_integer('SEED', None, 'Random seed.')
 flags.DEFINE_string('data_save_path', None, 'Path for saving results.')
@@ -78,6 +79,7 @@ print("Is 64 precision enabled?:", jax.config.jax_enable_x64)
 my_model = eval(FLAGS.model)
 search_MAP_best_params = FLAGS.search_MAP_best_params
 n_samples_2mcmc = FLAGS.n_samples
+no_networks = FLAGS.no_networks
 thinning = FLAGS.thinning
 scale_spike_fixed = FLAGS.scale_spike_fixed
 covid_vals_name = FLAGS.Y
@@ -165,12 +167,13 @@ for k in res.keys():
 
 hyperpars = ['eta0_0', 'eta0_coefs', 'eta1_0', 'eta1_coefs', 'eta2_0', 'eta2_coefs']
 if search_MAP_best_params:
+    
     print('Search for MAP best params...')
     bandwidths = 10 ** np.linspace(-1, 1, 50)
     kernels = ['gaussian', 'exponential', 'linear',]
 
-    best_params = {}
     for par in hyperpars:
+        best_params = {}
         print(par)
         if 'coefs' in par:
             for net_ix in range(n_nets):
@@ -222,8 +225,16 @@ x_ranges = {'eta0_0':np.linspace(-10, 1, 10000), 'eta0_coefs':np.linspace(-6, 5,
 #%%         
 etas_MAPs = {k:0 for k in hyperpars}
 
+if no_networks:
+    best_params = {'eta0_coefs':jnp.array([0.]*n_nets), 
+                   'eta1_coefs':jnp.array([0.]*n_nets), 
+                   'eta2_coefs':jnp.array([0.]*n_nets), }
+    hyperpars_MAP = ['eta0_0', 'eta1_0', 'eta2_0',]
+else:
+    best_params = {}
+    hyperpars_MAP = ['eta0_0', 'eta0_coefs', 'eta1_0', 'eta1_coefs', 'eta2_0', 'eta2_coefs']
 
-for par in hyperpars:
+for par in hyperpars_MAP:
     if 'coefs' in par:
         maps = []
         for net_ix in range(n_nets):

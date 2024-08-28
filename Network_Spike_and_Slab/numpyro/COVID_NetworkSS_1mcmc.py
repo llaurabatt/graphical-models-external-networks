@@ -38,6 +38,7 @@ import my_utils
 # define flags
 FLAGS = flags.FLAGS
 flags.DEFINE_boolean('store_warmup', False, 'If true, it will store warmup samples.')
+flags.DEFINE_boolean('no_networks', False, 'If true, network information will not be used.')
 flags.DEFINE_integer('thinning', 1, 'Thinning between MCMC samples. Defaults to 1.')
 flags.DEFINE_float('scale_spike_fixed', 0.0033341, 'Fixed value of the scale of the spike.')
 flags.DEFINE_integer('n_samples', None, 'Number of total samples to run (excluding warmup).')
@@ -70,6 +71,7 @@ SEED = FLAGS.SEED
 init_strategy = FLAGS.init_strategy
 network_names = FLAGS.network_list
 store_warmup = FLAGS.store_warmup
+no_networks = FLAGS.no_networks
 print(network_names)
 print(FLAGS.model)
 print(init_strategy)
@@ -129,56 +131,11 @@ if bhat is not None:
 else:
      mcmc_args.update({"mu_m":0., "mu_s":1.})
 
-# TO-DO: stop-and-start chain not working at the moment
-# def get_init_file(dir, checkpoint):
-#     '''Retrieve init file'''
-#     CPs = []
-#     for f in os.listdir(dir):
-#         if re.search(r'(_CP)\d+', f):
-#             CP = int(re.search(r'(_CP)\d+', f)[0][3:])
-#             CPs.append(CP)
-#     try:
-#         CP_max = max(CPs)
-#         for f in os.listdir(dir):
-#             if re.search(fr'.*_CP{CP_max}\.sav$', f):
-#                 return f, CP_max
-#     except:
-#         pass
-
-# try:        
-#     filename, CP_init = get_init_file(dir=data_save_path, checkpoint=n_samples)
-# except:
-#     CP_init = 0
 
 mcmc1_init(my_model=my_model, thinning=thinning, my_vals=covid_vals,
         my_model_args=mcmc_args, scale_spike_fixed=scale_spike_fixed, n_samples=n_samples,
         root_dir=_ROOT_DIR, data_save_path=data_save_path, seed=SEED, 
         init_strategy=init_strategy, b_init=b_init,
-        store_warmup=store_warmup)
-
-# TO-DO: stop-and-start chain not working at the moment
-# if CP_init >= n_samples:
-#     print(f'Checkpoint at {CP_init} number of samples already exists.')
-#     sys.exit()
-# elif (CP_init < 500):
-#     mcmc1_init(my_model=my_model, thinning=thinning, my_vals=covid_vals,
-#                 my_model_args=mcmc_args,
-#                root_dir=_ROOT_DIR, data_save_path=data_save_path, seed=SEED, init_strategy=init_strategy)
-#     n_rounds = (n_samples-500)/batch_size
-#     batches = [batch_size]*int(n_rounds) + ([(n_samples-500)%batch_size] if (n_samples-500)%batch_size!=0 else [])
-#     for s_ix, s in enumerate(batches):
-#         mcmc1_add(my_model=my_model, thinning=thinning, my_vals=covid_vals,
-#                   my_model_args=mcmc_args,
-#               checkpoint= 500 + sum(batches[:s_ix+1]) , n_warmup=1000, n_samples=s,
-#               root_dir=_ROOT_DIR, data_save_path=data_save_path)
-# else:
-#     n_rounds = (n_samples-CP_init)/batch_size
-#     batches = [batch_size]*int(n_rounds) + ([(n_samples-CP_init)%batch_size] if (n_samples-CP_init)%batch_size!=0 else []) 
-#     for s_ix, s in enumerate(batches):
-#         mcmc1_add(my_model=my_model, thinning=thinning, my_vals=covid_vals,
-#                   my_model_args=mcmc_args,
-#               checkpoint=CP_init + sum(batches[:s_ix+1]), n_warmup=1000, n_samples=s,
-#               root_dir=_ROOT_DIR, data_save_path=data_save_path)
- 
+        store_warmup=store_warmup, no_networks=no_networks)
 
 

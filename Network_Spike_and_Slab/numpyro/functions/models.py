@@ -572,6 +572,28 @@ def NetworkSS_regression_repr_etaRepr_centered(A_list,
     is_spike = my_utils.my_sigmoid(u, beta=100., alpha=w_slab)
     
     # corr mat
+    # print('tilde_eta0_coefs', tilde_eta0_coefs)
+    # print('tilde_eta1_coefs', tilde_eta1_coefs)
+    # print('tilde_eta2_coefs', tilde_eta2_coefs)
+    # print('eta0_coefs', eta0_coefs)
+    # print('eta0_coefs_m', eta0_coefs_m)
+    # print('eta0_coefs_s', eta0_coefs_s)
+    # print('eta1_coefs', eta1_coefs)
+    # print('eta1_coefs_m', eta1_coefs_m)
+    # print('eta1_coefs_s', eta1_coefs_s)
+    # print('eta2_coefs', eta2_coefs)
+    # print('eta2_coefs_m', eta2_coefs_m)
+    # print('eta2_coefs_s', eta2_coefs_s)
+    
+    # is_spike = deterministic("is_spike", is_spike)
+    # mean_slab = deterministic("mean_slab", mean_slab)
+    # w_slab = deterministic("w_slab", w_slab)
+    # scale_slab = deterministic("scale_slab", scale_slab)
+    # A_tril_mean0 = deterministic("A_tril_mean0", A_tril_mean0)
+    # A_tril_mean1 = deterministic("A_tril_mean1", A_tril_mean1)  
+    # A_tril_mean2 = deterministic("A_tril_mean2", A_tril_mean2)  
+
+
     rho_tilde = numpyro.sample("rho_tilde", dist.Laplace(0., 1.).expand((tril_len,)))
     rho_lt = numpyro.deterministic("rho_lt", is_spike*rho_tilde*scale_spike + 
                                   (1-is_spike)*(rho_tilde*scale_slab + mean_slab))

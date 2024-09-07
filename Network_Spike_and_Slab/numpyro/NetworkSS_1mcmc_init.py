@@ -56,6 +56,7 @@ def mcmc1_init(my_vals,
                seed,
                n_samples,
                no_networks,
+               init_all_path:Optional[str]=None,
                init_strategy:Optional[str]='init_to_value',
                thinning:Optional[int]=0,
                b_init:Optional[jnp.array]=None,
@@ -114,24 +115,31 @@ def mcmc1_init(my_vals,
 
 
     # init strategy
-    if no_networks:
-        fixed_params_dict = {'tilde_eta0_coefs':jnp.array([0.]*n_nets),
-                             'tilde_eta1_coefs':jnp.array([0.]*n_nets),
-                             'tilde_eta2_coefs':jnp.array([0.]*n_nets),}
-        
+    if no_networks:        
         if init_strategy=='init_to_value':
-            if my_covariates is not None:
+            if init_all_path:
+                res_init = pickle.load(open(init_all_path, 'rb'))
+                init_dict = {'rho_tilde':res_init['rho_tilde'][-1,:], 
+                                    'u':res_init['u'][-1,:],
+                                    'sqrt_diag':jnp.ravel(res_init['sqrt_diag'])[-1], 
+                                    'tilde_eta0_0':jnp.ravel(res_init['tilde_eta0_0'])[-1],
+                                    'tilde_eta1_0':jnp.ravel(res_init['tilde_eta1_0'])[-1],
+                                    'tilde_eta2_0':jnp.ravel(res_init['tilde_eta2_0'])[-1],
+                                    }
+
+            else:
                 init_dict = {'rho_tilde':rho_tilde_init, 
-                                                            'u':u_init,
-                                                            # "b_regression_coefs":b_init,
-                                                            'tilde_b_regression_coefs':b_init, 
-                                                            'sqrt_diag':sqrt_diag_init, 
-                                                            # 'eta0_0':my_model_args['eta0_0_m'],
-                                                            # 'eta1_0':my_model_args['eta1_0_m'],
-                                                            # 'eta2_0':my_model_args['eta2_0_m'],                                     
-                                                            'tilde_eta0_0':0.,
-                                                            'tilde_eta1_0':0.,
-                                                            'tilde_eta2_0':0.,}
+                            'u':u_init,
+                            'sqrt_diag':sqrt_diag_init, 
+                            'tilde_eta0_0':0.,
+                            'tilde_eta1_0':0.,
+                            'tilde_eta2_0':0.,}
+
+            if my_covariates is not None:
+                if init_all_path:
+                    init_dict.update({'tilde_b_regression_coefs':res_init['tilde_b_regression_coefs'][-1,:],})
+                else:
+                    init_dict.update({'tilde_b_regression_coefs':b_init})
                 my_init_strategy = init_to_value(values=init_dict)
                 fixed_params_dict = {'scale_spike':scale_spike_fixed, 
                                      'tilde_eta0_coefs':jnp.array([0.]*n_nets),
@@ -140,18 +148,11 @@ def mcmc1_init(my_vals,
                 print(f"Fixed scale_spike: {scale_spike_fixed}",)
 
             else:
-                init_dict = {'rho_tilde':rho_tilde_init, 
-                                                'u':u_init,
-                                                'mu':mu_init, 
-                                                'sqrt_diag':sqrt_diag_init, 
-                                                # 'eta0_0':my_model_args['eta0_0_m'],
-                                                # 'eta1_0':my_model_args['eta1_0_m'],
-                                                # 'eta2_0':my_model_args['eta2_0_m'],                                     
-                                                'tilde_eta0_0':0.,
-                                                'tilde_eta1_0':0.,
-                                                'tilde_eta2_0':0.,}
+                if init_all_path:
+                    init_dict.update({'mu':jnp.ravel(res_init['mu'])[-1],})
+                else:
+                    init_dict.update({'mu':mu_init})
                 my_init_strategy = init_to_value(values=init_dict)
-
                 fixed_params_dict = {'scale_spike':scale_spike_fixed, 
                                      'mu':mu_fixed,
                                      'tilde_eta0_coefs':jnp.array([0.]*n_nets),
@@ -167,52 +168,54 @@ def mcmc1_init(my_vals,
 
 
     else:
-        fixed_params_dict = {}
         if init_strategy=='init_to_value':
-            if my_covariates is not None:
+
+            if init_all_path:
+                res_init = pickle.load(open(init_all_path, 'rb'))
+                init_dict = {'rho_tilde':res_init['rho_tilde'][-1,:], 
+                                    'u':res_init['u'][-1,:],
+                                    'sqrt_diag':res_init['sqrt_diag'][-1,:], 
+                                    'tilde_eta0_0':jnp.ravel(res_init['tilde_eta0_0'])[-1],
+                                    'tilde_eta1_0':jnp.ravel(res_init['tilde_eta1_0'])[-1],
+                                    'tilde_eta2_0':jnp.ravel(res_init['tilde_eta2_0'])[-1],                                     
+                                    'tilde_eta0_coefs':res_init['tilde_eta0_coefs'][-1,:],
+                                    'tilde_eta1_coefs':res_init['tilde_eta1_coefs'][-1,:],
+                                    'tilde_eta2_coefs':res_init['tilde_eta2_coefs'][-1,:],}
+
+            else:
                 init_dict = {'rho_tilde':rho_tilde_init, 
-                                                            'u':u_init,
-                                                            # "b_regression_coefs":b_init,
-                                                            'tilde_b_regression_coefs':b_init, 
-                                                            'sqrt_diag':sqrt_diag_init, 
-                                                            # 'eta0_0':my_model_args['eta0_0_m'],
-                                                            # 'eta1_0':my_model_args['eta1_0_m'],
-                                                            # 'eta2_0':my_model_args['eta2_0_m'],                                     
-                                                            # 'eta0_coefs':jnp.array([my_model_args['eta0_coefs_m']]*n_nets),
-                                                            # 'eta1_coefs':jnp.array([my_model_args['eta1_coefs_m']]*n_nets),
-                                                            # 'eta2_coefs':jnp.array([my_model_args['eta2_coefs_m']]*n_nets),})
-                                                            'tilde_eta0_0':0.,
-                                                            'tilde_eta1_0':0.,
-                                                            'tilde_eta2_0':0.,                                     
-                                                            'tilde_eta0_coefs':jnp.array([0.]*n_nets),
-                                                            'tilde_eta1_coefs':jnp.array([0.]*n_nets),
-                                                            'tilde_eta2_coefs':jnp.array([0.]*n_nets),}
+                                    'u':u_init,
+                                    'sqrt_diag':sqrt_diag_init, 
+                                    # 'eta0_0':my_model_args['eta0_0_m'],
+                                    # 'eta1_0':my_model_args['eta1_0_m'],
+                                    # 'eta2_0':my_model_args['eta2_0_m'],                                     
+                                    # 'eta0_coefs':jnp.array([my_model_args['eta0_coefs_m']]*n_nets),
+                                    # 'eta1_coefs':jnp.array([my_model_args['eta1_coefs_m']]*n_nets),
+                                    # 'eta2_coefs':jnp.array([my_model_args['eta2_coefs_m']]*n_nets),})
+                                    'tilde_eta0_0':0.,
+                                    'tilde_eta1_0':0.,
+                                    'tilde_eta2_0':0.,                                     
+                                    'tilde_eta0_coefs':jnp.array([0.]*n_nets),
+                                    'tilde_eta1_coefs':jnp.array([0.]*n_nets),
+                                    'tilde_eta2_coefs':jnp.array([0.]*n_nets),}
+
+
+            if my_covariates is not None:
+                if init_all_path:
+                    init_dict.update({'tilde_b_regression_coefs':res_init['tilde_b_regression_coefs'][-1,:],})
+                else:
+                    init_dict.update({'tilde_b_regression_coefs':b_init})
                 my_init_strategy = init_to_value(values=init_dict)
                 fixed_params_dict = {"scale_spike":scale_spike_fixed}
                 print(f"Fixed scale_spike: {scale_spike_fixed}")
 
             else:
-                init_dict = {'rho_tilde':rho_tilde_init, 
-                                                'u':u_init,
-                                                'mu':mu_init, 
-                                                'sqrt_diag':sqrt_diag_init, 
-                                                # 'eta0_0':my_model_args['eta0_0_m'],
-                                                # 'eta1_0':my_model_args['eta1_0_m'],
-                                                # 'eta2_0':my_model_args['eta2_0_m'],                                     
-                                                # 'eta0_coefs':jnp.array([my_model_args['eta0_coefs_m']]*n_nets),
-                                                # 'eta1_coefs':jnp.array([my_model_args['eta1_coefs_m']]*n_nets),
-                                                # 'eta2_coefs':jnp.array([my_model_args['eta2_coefs_m']]*n_nets),})
-                                                'tilde_eta0_0':0.,
-                                                'tilde_eta1_0':0.,
-                                                'tilde_eta2_0':0.,                                     
-                                                'tilde_eta0_coefs':jnp.array([0.]*n_nets),
-                                                'tilde_eta1_coefs':jnp.array([0.]*n_nets),
-                                                'tilde_eta2_coefs':jnp.array([0.]*n_nets),}
+                if init_all_path:
+                    init_dict.update({'mu':jnp.ravel(res_init['mu'])[-1],})
+                else:
+                    init_dict.update({'mu':mu_init})
                 my_init_strategy = init_to_value(values=init_dict)
-
                 fixed_params_dict = {"scale_spike":scale_spike_fixed, "mu":mu_fixed}
-
-
 
         elif init_strategy=='init_to_feasible':
             my_init_strategy = init_to_feasible()
@@ -277,5 +280,5 @@ def mcmc1_init(my_vals,
     # for k,v in s.items():
     #     ss[k] = v[mask]
 
-    with open(data_save_path + f'NetworkSS_1mcmc_p{p}_w{n_warmup}_s{n_samples}_CP{n_samples}{"_regression" if my_covariates is not None else ""}{"_nonetworks" if no_networks is not None else ""}.sav' , 'wb') as f:
+    with open(data_save_path + f'NetworkSS_1mcmc_p{p}_w{n_warmup}_s{n_samples}_CP{n_samples}{"_regression" if my_covariates is not None else ""}{"_nonetworks" if no_networks else ""}{"_init_all_path" if init_all_path is not None else ""}.sav' , 'wb') as f:
         pickle.dump((s), f)

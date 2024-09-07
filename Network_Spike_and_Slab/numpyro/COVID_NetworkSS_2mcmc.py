@@ -126,6 +126,8 @@ n_nets = len(A_list)
 print(f"NetworkSS, n {n}, p {p}, number of networks {n_nets}")
 if q:
     print(f"Number of covariates {q}")
+if no_networks:
+    print("No network information will be used.")    
 #%%
 # get init file
 
@@ -171,9 +173,9 @@ if search_MAP_best_params:
     print('Search for MAP best params...')
     bandwidths = 10 ** np.linspace(-1, 1, 50)
     kernels = ['gaussian', 'exponential', 'linear',]
-
+    best_params = {}
     for par in hyperpars:
-        best_params = {}
+        
         print(par)
         if 'coefs' in par:
             for net_ix in range(n_nets):
@@ -223,15 +225,15 @@ x_ranges = {'eta0_0':np.linspace(-10, 1, 10000), 'eta0_coefs':np.linspace(-6, 5,
            'eta1_0':np.linspace(-10, 5, 10000), 'eta1_coefs':np.linspace(-5, 5, 10000),
            'eta2_0':np.linspace(-35, 40, 10000), 'eta2_coefs':np.linspace(-7, 15, 10000)}
 #%%         
-etas_MAPs = {k:0 for k in hyperpars}
+
 
 if no_networks:
-    best_params = {'eta0_coefs':jnp.array([0.]*n_nets), 
+    etas_MAPs = {'eta0_coefs':jnp.array([0.]*n_nets), 
                    'eta1_coefs':jnp.array([0.]*n_nets), 
                    'eta2_coefs':jnp.array([0.]*n_nets), }
     hyperpars_MAP = ['eta0_0', 'eta1_0', 'eta2_0',]
 else:
-    best_params = {}
+    etas_MAPs = {k:0 for k in hyperpars}
     hyperpars_MAP = ['eta0_0', 'eta0_coefs', 'eta1_0', 'eta1_coefs', 'eta2_0', 'eta2_coefs']
 
 for par in hyperpars_MAP:
@@ -413,12 +415,12 @@ fixed_params_dict = {"scale_spike":scale_spike_fixed,
                      "eta1_coefs":jnp.array(etas_MAPs["eta1_coefs"]),
                     "eta2_0":etas_MAPs["eta2_0"], 
                      "eta2_coefs":jnp.array(etas_MAPs["eta2_coefs"]),
-                      "tilde_eta0_0":(etas_MAPs["eta0_0"]-my_model_args["eta0_0_m"])/my_model_args["eta0_0_s"], 
-                     "tilde_eta0_coefs":(jnp.array(etas_MAPs["eta0_coefs"])-my_model_args["eta0_coefs_m"])/my_model_args["eta0_coefs_s"],
-                    "tilde_eta1_0":(etas_MAPs["eta1_0"]-my_model_args["eta1_0_m"])/my_model_args["eta1_0_s"], 
-                     "tilde_eta1_coefs":(jnp.array(etas_MAPs["eta1_coefs"])-my_model_args["eta1_coefs_m"])/my_model_args["eta1_coefs_s"],
-                    "tilde_eta2_0":(etas_MAPs["eta2_0"]-my_model_args["eta2_0_m"])/my_model_args["eta2_0_s"], 
-                     "tilde_eta2_coefs":(jnp.array(etas_MAPs["eta2_coefs"])-my_model_args["eta2_coefs_m"])/my_model_args["eta2_coefs_s"]}
+                      "tilde_eta0_0":(etas_MAPs["eta0_0"]-my_model_args["eta0_0_m"])*(jnp.sqrt((p*(p-1)/2.0)/n)/my_model_args["eta0_0_s"]), 
+                     "tilde_eta0_coefs":(jnp.array(etas_MAPs["eta0_coefs"])-my_model_args["eta0_coefs_m"])*(jnp.sqrt((p*(p-1)/2.0)/n)/my_model_args["eta0_coefs_s"]),
+                    "tilde_eta1_0":(etas_MAPs["eta1_0"]-my_model_args["eta1_0_m"])*(jnp.sqrt((p*(p-1)/2.0)/n)/my_model_args["eta1_0_s"]), 
+                     "tilde_eta1_coefs":(jnp.array(etas_MAPs["eta1_coefs"])-my_model_args["eta1_coefs_m"])*(jnp.sqrt((p*(p-1)/2.0)/n)/my_model_args["eta1_coefs_s"]),
+                    "tilde_eta2_0":(etas_MAPs["eta2_0"]-my_model_args["eta2_0_m"])*(jnp.sqrt((p*(p-1)/2.0)/n)/my_model_args["eta2_0_s"]), 
+                     "tilde_eta2_coefs":(jnp.array(etas_MAPs["eta2_coefs"])-my_model_args["eta2_coefs_m"])*(jnp.sqrt((p*(p-1)/2.0)/n)/my_model_args["eta2_coefs_s"])}
 
 sqrt_diag_init = jnp.ones((p,))
 blocked_params_list = ["scale_spike", 
@@ -496,7 +498,100 @@ s = jax.device_put(mcmc.get_samples(), cpus[0])
 # ss = {}
 # for k,v in s.items():
 #     ss[k] = v[mask]
+
+
+
 f_dict = jax.device_put(fixed_params_dict, cpus[0])
 s.update({'fixed_params_dict':f_dict})
-with open(data_save_path + f'NetworkSS_2mcmc_p{p}_w{n_warmup}_s{n_samples}{"_regression" if covariates is not None else ""}.sav' , 'wb') as f:
+
+# ######## to delete (down) #########
+# n,p = covid_vals.shape
+# # A_list = [geo_clean, sci_clean, flights_clean]
+# tril_idx = jnp.tril_indices(n=p, k=-1, m=p)
+# tril_len = tril_idx[0].shape[0]
+# A_tril_arr = jnp.array([A[tril_idx] for A in my_model_args['A_list']]) # (a, p, p)
+
+# # new_eta0_0 = s['fixed_params_dict']["tilde_eta0_0"]*my_model_args["eta0_0_s"]/ jnp.sqrt((p*(p-1)/2.0)/n) + my_model_args["eta0_0_m"]
+# # new_eta1_0 = s['fixed_params_dict']["tilde_eta1_0"]*my_model_args["eta1_0_s"]/ jnp.sqrt((p*(p-1)/2.0)/n) + my_model_args["eta1_0_m"]
+# # new_eta2_0 = s['fixed_params_dict']["tilde_eta2_0"]*my_model_args["eta2_0_s"]/ jnp.sqrt((p*(p-1)/2.0)/n) + my_model_args["eta2_0_m"]
+
+# # new_eta0_coefs = s['fixed_params_dict']["tilde_eta0_coefs"]*my_model_args["eta0_coefs_s"]/ jnp.sqrt((p*(p-1)/2.0)/n) + my_model_args["eta0_coefs_m"]
+# # new_eta1_coefs = s['fixed_params_dict']["tilde_eta1_coefs"]*my_model_args["eta1_coefs_s"]/ jnp.sqrt((p*(p-1)/2.0)/n) + my_model_args["eta1_coefs_m"]
+# # new_eta2_coefs = s['fixed_params_dict']["tilde_eta2_coefs"]*my_model_args["eta2_coefs_s"]/ jnp.sqrt((p*(p-1)/2.0)/n) + my_model_args["eta2_coefs_m"]
+
+# new_eta0_0 = s['fixed_params_dict']["eta0_0"]
+# new_eta1_0 = s['fixed_params_dict']["eta1_0"]
+# new_eta2_0 = s['fixed_params_dict']["eta2_0"]
+
+# new_eta0_coefs = s['fixed_params_dict']["eta0_coefs"]
+# new_eta1_coefs = s['fixed_params_dict']["eta1_coefs"]
+# new_eta2_coefs = s['fixed_params_dict']["eta2_coefs"]
+
+# A_tril_mean2 = 0.
+# for coef, A in zip(new_eta2_coefs,A_tril_arr):
+#     A_tril_mean2 += coef*A
+# w_slab = 1/(1+jnp.exp(-new_eta2_0 -A_tril_mean2)) 
+
+# A_tril_mean0 = 0.
+# for coef, A in zip(new_eta0_coefs,A_tril_arr):
+#     A_tril_mean0 += coef*A
+# mean_slab = new_eta0_0 + A_tril_mean0
+
+# A_tril_mean1 = 0.
+# for coef, A in zip(new_eta1_coefs,A_tril_arr):
+#     A_tril_mean1 += coef*A
+# scale_slab = s['fixed_params_dict']['scale_spike']*(1+jnp.exp(-new_eta1_0-A_tril_mean1))
+
+# is_spike_all = [my_utils.my_sigmoid(s['u'][:,i], beta=100., alpha=w_slab[i]) for i in range(w_slab.shape[0])]
+# my_rho_lt_all = [is_spike_all[i]*s['rho_tilde'][:,i]*s['fixed_params_dict']['scale_spike'] 
+#                  + (1-is_spike_all[i])*(s['rho_tilde'][:,i]*scale_slab[i] 
+#                                         + mean_slab[i]) for i in range(w_slab.shape[0])]
+# my_rho_lt_all = np.array(my_rho_lt_all).T
+# my_prob_slab_all = []
+# for cs in range(len(my_rho_lt_all)):
+#     prob_slab = my_utils.get_prob_slab(rho_lt=my_rho_lt_all[cs], 
+#                                     mean_slab=mean_slab, 
+#                                     scale_slab=scale_slab, 
+#                                     scale_spike=s['fixed_params_dict']['scale_spike'], 
+#                                     w_slab=w_slab, 
+#                                     w_spike=(1-w_slab))
+#     my_prob_slab_all.append(prob_slab)
+# my_prob_slab_est = (jnp.array(my_prob_slab_all)).mean(0)    
+
+# my_nonzero_preds_5 = (my_prob_slab_est>0.5).astype(int)
+# my_nonzero_preds_5_mat = jnp.zeros((p,p))
+# my_nonzero_preds_5_mat = my_nonzero_preds_5_mat.at[tril_idx].set(my_nonzero_preds_5)
+# my_nonzero_preds_5_mat = pd.DataFrame(my_nonzero_preds_5_mat)
+
+
+# my_nonzero_preds_95 = (my_prob_slab_est>0.95).astype(int)
+# my_nonzero_preds_95_mat = jnp.zeros((p,p))
+# my_nonzero_preds_95_mat = my_nonzero_preds_95_mat.at[tril_idx].set(my_nonzero_preds_95)
+# my_nonzero_preds_95_mat = pd.DataFrame(my_nonzero_preds_95_mat)
+
+# # with numpyro rholt
+# prob_slab_all = []
+# for cs in range(len(my_rho_lt_all)):
+#     prob_slab = my_utils.get_prob_slab(rho_lt=s['rho_lt'][cs], 
+#                                     mean_slab=mean_slab, 
+#                                     scale_slab=scale_slab, 
+#                                     scale_spike=s['fixed_params_dict']['scale_spike'], 
+#                                     w_slab=w_slab, 
+#                                     w_spike=(1-w_slab))
+#     prob_slab_all.append(prob_slab)
+# prob_slab_est = (jnp.array(prob_slab_all)).mean(0)    
+
+# nonzero_preds_5 = (prob_slab_est>0.5).astype(int)
+# nonzero_preds_5_mat = jnp.zeros((p,p))
+# nonzero_preds_5_mat = nonzero_preds_5_mat.at[tril_idx].set(nonzero_preds_5)
+# nonzero_preds_5_mat = pd.DataFrame(nonzero_preds_5_mat)
+
+
+# nonzero_preds_95 = (prob_slab_est>0.95).astype(int)
+# nonzero_preds_95_mat = jnp.zeros((p,p))
+# nonzero_preds_95_mat = nonzero_preds_95_mat.at[tril_idx].set(nonzero_preds_95)
+# nonzero_preds_95_mat = pd.DataFrame(nonzero_preds_95_mat)
+# ######## to delete (up) #########
+
+with open(data_save_path + f'NetworkSS_2mcmc_p{p}_w{n_warmup}_s{n_samples}{"_regression" if covariates is not None else ""}{"_nonetworks" if no_networks else ""}.sav' , 'wb') as f:
     pickle.dump((s), f)

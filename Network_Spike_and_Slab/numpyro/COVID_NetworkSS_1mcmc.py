@@ -43,6 +43,7 @@ flags.DEFINE_integer('thinning', 1, 'Thinning between MCMC samples. Defaults to 
 flags.DEFINE_float('scale_spike_fixed', 0.0033341, 'Fixed value of the scale of the spike.')
 flags.DEFINE_integer('n_samples', None, 'Number of total samples to run (excluding warmup).')
 flags.DEFINE_string('data_save_path', None, 'Path for saving results.')
+flags.DEFINE_string('init_all_path', None, 'Path for initial values of all parameters.')
 flags.DEFINE_integer('SEED', None, 'Random seed.')
 flags.DEFINE_string('Y', 'COVID_332_meta_pruned.csv', 'Name of file where data for dependent variable is stored.')
 flags.DEFINE_string('X', None, 'Name of file where data for covariate variables is stored.')
@@ -69,6 +70,7 @@ b_init = FLAGS.b_init
 bhat = FLAGS.bhat
 SEED = FLAGS.SEED
 init_strategy = FLAGS.init_strategy
+init_all_path = FLAGS.init_all_path
 network_names = FLAGS.network_list
 store_warmup = FLAGS.store_warmup
 no_networks = FLAGS.no_networks
@@ -136,6 +138,6 @@ mcmc1_init(my_model=my_model, thinning=thinning, my_vals=covid_vals,
         my_model_args=mcmc_args, scale_spike_fixed=scale_spike_fixed, n_samples=n_samples,
         root_dir=_ROOT_DIR, data_save_path=data_save_path, seed=SEED, 
         init_strategy=init_strategy, b_init=b_init,
-        store_warmup=store_warmup, no_networks=no_networks)
+        store_warmup=store_warmup, no_networks=no_networks, init_all_path=init_all_path)
 
 

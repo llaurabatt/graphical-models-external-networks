@@ -119,7 +119,8 @@ def mcmc1_init(my_vals,
         if init_strategy=='init_to_value':
             if init_all_path:
                 res_init = pickle.load(open(init_all_path, 'rb'))
-                init_dict = {'rho_tilde':res_init['rho_tilde'][-1,:], 
+                res_init = jax.tree_map(lambda x: jnp.asarray(x, dtype=jnp.float64), res_init)
+                init_dict = {'rho_tilde':res_init['rho_tilde'][-1,:]/2, 
                                     'u':res_init['u'][-1,:],
                                     'sqrt_diag':jnp.ravel(res_init['sqrt_diag'])[-1], 
                                     'tilde_eta0_0':jnp.ravel(res_init['tilde_eta0_0'])[-1],
@@ -172,7 +173,8 @@ def mcmc1_init(my_vals,
 
             if init_all_path:
                 res_init = pickle.load(open(init_all_path, 'rb'))
-                init_dict = {'rho_tilde':res_init['rho_tilde'][-1,:], 
+                res_init = jax.tree_map(lambda x: jnp.asarray(x, dtype=jnp.float64), res_init)
+                init_dict = {'rho_tilde':res_init['rho_tilde'][-1,:]/2, 
                                     'u':res_init['u'][-1,:],
                                     'sqrt_diag':res_init['sqrt_diag'][-1,:], 
                                     'tilde_eta0_0':jnp.ravel(res_init['tilde_eta0_0'])[-1],

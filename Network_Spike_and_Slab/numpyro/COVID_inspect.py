@@ -27,7 +27,7 @@ sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_an
 data_save_path_COVID_merge = _ROOT_DIR + 'MERGE_6_9_NetworkSS_results_regression_etarepr_brepr_newprior_centered_rotated/'
 data_save_path_COVID_9 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_centered_rotated/'
 data_save_path_COVID_9_spikedivide5 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_centered_rotated_spikedivide5/'
-data_save_path_COVID_9_spiketimes2 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_centered_rotated_spiketimes2/'
+data_save_path_COVID_9_spiketimes2 = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_centered_rotated_times2/'
 data_save_path_COVID_9_nonetworks = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_centered_rotated_NONETWORKS/'
 
 data_path = './Data/COVID/Pre-processed Data/'
@@ -43,7 +43,7 @@ data_save_path = data_save_path_COVID_9_spiketimes2
 # with open(data_save_path + 'NetworkSS_1mcmc_p332_w10_s10_CP10_regression_nonetworks.sav', 'rb') as fr:
 #     res_ss_geo_sci = pickle.load(fr) 
 
-with open(data_save_path + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
+with open(data_save_path + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression_init_all_path.sav', 'rb') as fr:
     res_ss_geo_sci = pickle.load(fr)
 
 # with open(data_save_path2 + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression.sav', 'rb') as fr:

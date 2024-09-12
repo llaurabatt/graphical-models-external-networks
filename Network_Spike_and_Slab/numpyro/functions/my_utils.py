@@ -505,3 +505,25 @@ def MODIFIED_get_density_els_marginal(A_tril, A_min, A_max, A_tril_pos, len_A_li
 
     A_mids = jnp.array(A_mids)
     return A_ints, A_mids
+
+
+def get_credible_interval(post_chain):
+    # Credible Intervals
+    sorted_arr = np.sort(post_chain) # for each K sort chain
+    len_sample = post_chain.shape[0] # len chain
+
+    # 2.5% percentile: if integer pick value, else average of values at pos5 and pos5+1, recall python idx at 0 (lower bound)
+    pos025 = 0.025*len_sample
+    if pos025 == int(pos025):
+        lb025 = sorted_arr[max(int(pos025)-1,0)]
+    else:
+        lb025 = (sorted_arr[max(int(pos025)-1,0)] + sorted_arr[int(pos025)])/2
+
+    # 97.5% percentile: if integer pick value, else average of values at pos95 and pos95+1, recall python idx at 0 (upper bound)
+    pos975 = 0.975*len_sample
+    if pos975 == int(pos975):
+        ub975 = sorted_arr[int(pos975)-1]
+    else:
+        ub975 = (sorted_arr[(int(pos975)-1)] + sorted_arr[int(pos975)])/2
+        
+    return (jnp.round(lb025,3), jnp.round(ub975,3))

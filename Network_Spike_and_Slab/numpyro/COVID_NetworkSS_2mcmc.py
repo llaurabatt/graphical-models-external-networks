@@ -58,6 +58,7 @@ import my_utils
 FLAGS = flags.FLAGS
 flags.DEFINE_boolean('search_MAP_best_params', False, 'If true, it will optimise kernel and bandwith for KDE on etas.')
 flags.DEFINE_boolean('no_networks', False, 'If true, network information will not be used.')
+flags.DEFINE_boolean('zero_out_etas', False, 'If true, etas will be zeroed out if credible interval includes zero.')
 flags.DEFINE_integer('thinning', None, 'Thinning between MCMC samples.')
 flags.DEFINE_integer('SEED', None, 'Random seed.')
 flags.DEFINE_string('data_save_path', None, 'Path for saving results.')
@@ -80,6 +81,7 @@ my_model = eval(FLAGS.model)
 search_MAP_best_params = FLAGS.search_MAP_best_params
 n_samples_2mcmc = FLAGS.n_samples
 no_networks = FLAGS.no_networks
+zero_out_etas = FLAGS.zero_out_etas
 thinning = FLAGS.thinning
 scale_spike_fixed = FLAGS.scale_spike_fixed
 covid_vals_name = FLAGS.Y
@@ -224,8 +226,10 @@ else:
 x_ranges = {'eta0_0':np.linspace(-10, 1, 10000), 'eta0_coefs':np.linspace(-6, 5, 10000),
            'eta1_0':np.linspace(-10, 5, 10000), 'eta1_coefs':np.linspace(-5, 5, 10000),
            'eta2_0':np.linspace(-35, 40, 10000), 'eta2_coefs':np.linspace(-7, 15, 10000)}
-#%%         
+#%%  
 
+
+#%%
 
 if no_networks:
     etas_MAPs = {'eta0_coefs':jnp.array([0.]*n_nets), 
@@ -293,6 +297,20 @@ for par in hyperpars_MAP:
         print(f'{par} : MAP {MAP}, post. mean {post_mean}')
 
 #%%
+
+if zero_out_etas:
+    all_etas_m = ['eta0_0', 'eta1_0', 'eta2_0',]
+    
+    for par in all_etas_m:
+        if jnp.prod(jnp.array(my_utils.get_credible_interval(res[par].squeeze()))) < 0:
+            etas_MAPs[par] = 0.
+    if not no_networks:
+        all_etas_coefs = ['eta0_coefs', 'eta1_coefs', 'eta2_coefs']
+        for pars in all_etas_coefs:
+            for par_ix in range(n_nets):
+                if jnp.prod(jnp.array(my_utils.get_credible_interval(res[pars][:,par_ix].squeeze()))) < 0:
+                    etas_MAPs[pars] = etas_MAPs[pars].at[par_ix].set(0.)
+
 ################# 2mcmc ##############
 
 
@@ -593,5 +611,5 @@ s.update({'fixed_params_dict':f_dict})
 # nonzero_preds_95_mat = pd.DataFrame(nonzero_preds_95_mat)
 # ######## to delete (up) #########
 
-with open(data_save_path + f'NetworkSS_2mcmc_p{p}_w{n_warmup}_s{n_samples}{"_regression" if covariates is not None else ""}{"_nonetworks" if no_networks else ""}.sav' , 'wb') as f:
+with open(data_save_path + f'NetworkSS_2mcmc_p{p}_w{n_warmup}_s{n_samples}{"_regression" if covariates is not None else ""}{"_nonetworks" if no_networks else ""}{"_zero_out_etas" if zero_out_etas else ""}.sav' , 'wb') as f:
     pickle.dump((s), f)

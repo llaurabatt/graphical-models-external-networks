@@ -380,55 +380,56 @@ A_flights_ints_20, A_flights_mids_20 = my_utils.get_density_els_marginal(A_tril=
                          eta_dict=etas_dict)
 
 ## Final plots
+# Credible Intervals moved to my_utils
 
-def get_credible_interval(post_chain):
-    # Credible Intervals
-    sorted_arr = np.sort(post_chain) # for each K sort chain
-    len_sample = post_chain.shape[0] # len chain
+# def get_credible_interval(post_chain):
+#     # Credible Intervals
+#     sorted_arr = np.sort(post_chain) # for each K sort chain
+#     len_sample = post_chain.shape[0] # len chain
 
-    # 2.5% percentile: if integer pick value, else average of values at pos5 and pos5+1, recall python idx at 0 (lower bound)
-    pos025 = 0.025*len_sample
-    if pos025 == int(pos025):
-        lb025 = sorted_arr[max(int(pos025)-1,0)]
-    else:
-        lb025 = (sorted_arr[max(int(pos025)-1,0)] + sorted_arr[int(pos025)])/2
+#     # 2.5% percentile: if integer pick value, else average of values at pos5 and pos5+1, recall python idx at 0 (lower bound)
+#     pos025 = 0.025*len_sample
+#     if pos025 == int(pos025):
+#         lb025 = sorted_arr[max(int(pos025)-1,0)]
+#     else:
+#         lb025 = (sorted_arr[max(int(pos025)-1,0)] + sorted_arr[int(pos025)])/2
 
-    # 97.5% percentile: if integer pick value, else average of values at pos95 and pos95+1, recall python idx at 0 (upper bound)
-    pos975 = 0.975*len_sample
-    if pos975 == int(pos975):
-        ub975 = sorted_arr[int(pos975)-1]
-    else:
-        ub975 = (sorted_arr[(int(pos975)-1)] + sorted_arr[int(pos975)])/2
+#     # 97.5% percentile: if integer pick value, else average of values at pos95 and pos95+1, recall python idx at 0 (upper bound)
+#     pos975 = 0.975*len_sample
+#     if pos975 == int(pos975):
+#         ub975 = sorted_arr[int(pos975)-1]
+#     else:
+#         ub975 = (sorted_arr[(int(pos975)-1)] + sorted_arr[int(pos975)])/2
         
-    return (jnp.round(lb025,3), jnp.round(ub975,3))
+#     return (jnp.round(lb025,3), jnp.round(ub975,3))
 
 
 df_MAP_dict = {'intercept':{'eta0_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta0_0'],3),
-                        'eta0_CI':get_credible_interval(res_ss_geo_sci['eta0_0'].squeeze()),
+                        'eta0_CI':my_utils.get_credible_interval(res_ss_geo_sci['eta0_0'].squeeze()),
                         'eta1_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta1_0'],3),
-                        'eta1_CI':get_credible_interval(res_ss_geo_sci['eta1_0'].squeeze()),
+                        'eta1_CI':my_utils.get_credible_interval(res_ss_geo_sci['eta1_0'].squeeze()),
                         'eta2_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta2_0'],3),
-                        'eta2_CI':get_credible_interval(res_ss_geo_sci['eta2_0'].squeeze()),},
+                        'eta2_CI':my_utils.get_credible_interval(res_ss_geo_sci['eta2_0'].squeeze()),},
                
 'geo':{'eta0_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta0_coefs_geo'],3),
-                        'eta0_CI':get_credible_interval(res_ss_geo_sci['eta0_coefs'][:,0]),
+                        'eta0_CI':my_utils.get_credible_interval(res_ss_geo_sci['eta0_coefs'][:,0]),
                         'eta1_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta1_coefs_geo'],3),
-                        'eta1_CI':get_credible_interval(res_ss_geo_sci['eta1_coefs'][:,0]),
+                        'eta1_CI':my_utils.get_credible_interval(res_ss_geo_sci['eta1_coefs'][:,0]),
                         'eta2_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta2_coefs_geo'],3),
-                        'eta2_CI':get_credible_interval(res_ss_geo_sci['eta2_coefs'][:,0]),},
+                        'eta2_CI':my_utils.get_credible_interval(res_ss_geo_sci['eta2_coefs'][:,0]),},
 
 'sci':{'eta0_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta0_coefs_sci'],3),
-                        'eta0_CI':get_credible_interval(res_ss_geo_sci['eta0_coefs'][:,1]),
+                        'eta0_CI':my_utils.get_credible_interval(res_ss_geo_sci['eta0_coefs'][:,1]),
                         'eta1_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta1_coefs_sci'],3),
-                        'eta1_CI':get_credible_interval(res_ss_geo_sci['eta1_coefs'][:,1]),
+                        'eta1_CI':my_utils.get_credible_interval(res_ss_geo_sci['eta1_coefs'][:,1]),
                         'eta2_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta2_coefs_sci'],3),
-                        'eta2_CI':get_credible_interval(res_ss_geo_sci['eta2_coefs'][:,1]),},
+                        'eta2_CI':my_utils.get_credible_interval(res_ss_geo_sci['eta2_coefs'][:,1]),},
 'flights':{'eta0_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta0_coefs_flights'],3),
-                        'eta0_CI':get_credible_interval(res_ss_geo_sci['eta0_coefs'][:,2]),
+                        'eta0_CI':my_utils.get_credible_interval(res_ss_geo_sci['eta0_coefs'][:,2]),
                         'eta1_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta1_coefs_flights'],3),
-                        'eta1_CI':get_credible_interval(res_ss_geo_sci['eta1_coefs'][:,2]),
+                        'eta1_CI':my_utils.get_credible_interval(res_ss_geo_sci['eta1_coefs'][:,2]),
                         'eta2_m':jnp.round(df_NetworkSS_etas_spec['MAP']['eta2_coefs_flights'],3),
-                        'eta2_CI':get_credible_interval(res_ss_geo_sci['eta2_coefs'][:,2]),},
+                        'eta2_CI':my_utils.get_credible_interval(res_ss_geo_sci['eta2_coefs'][:,2]),},
 }
 
 df = pd.DataFrame.from_dict(df_MAP_dict)

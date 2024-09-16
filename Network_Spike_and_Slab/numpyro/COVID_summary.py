@@ -41,16 +41,18 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string('mcmc1_path', None, '1mcmc path to generate plots from.')
 flags.DEFINE_string('mcmc2_path', None, '2mcmc path to generate plots from.')
 flags.DEFINE_boolean('get_probs', True, 'Compute mean slab, w slab, prob slab for 1mcmc.')
+flags.DEFINE_boolean('zero_out_etas', False, 'If true, etas from the 1mcmc will be zeroed out if credible interval includes zero.')
 flags.DEFINE_string('data_save_path', data_save_path, 'Path where to save figure folder.')
 flags.DEFINE_float('scale_spike_fixed', 0.0033341, 'Fixed value of the scale of the spike.')
 flags.DEFINE_string('Y', 'COVID_332_meta_pruned.csv', 'Name of file where data for dependent variable is stored.')
 flags.DEFINE_multi_string('network_list', ['GEO_meta_clean_332.npy', 'SCI_meta_clean_332.npy', 'flights_meta_clean_332.npy'], 'Name of file where network data is stored. Flag can be called multiple times. Order of calling IS relevant.')
-flags.mark_flags_as_required(['mcmc1_path', 'mcmc2_path'])
+flags.mark_flags_as_required(['data_save_path', 'mcmc1_path', 'mcmc2_path'])
 FLAGS(sys.argv)
 
 # load data
 covid_vals_name = FLAGS.Y
 network_names = FLAGS.network_list
+zero_out_etas = FLAGS.zero_out_etas
 scale_spike_fixed = FLAGS.scale_spike_fixed
 data_save_path = FLAGS.data_save_path
 if not os.path.exists(data_save_path + 'Figures/'):
@@ -210,7 +212,7 @@ with open(FLAGS.mcmc2_path, 'rb') as fr:
     mcmc2_ss_geo_sci = pickle.load(fr)
 
 # rhos = pd.DataFrame(mcmc2_ss_geo_sci['rho_lt'])
-# rhos.to_csv(data_save_path + 'rho_lt_mcmc2.csv')
+# rhos.to_csv(data_save_path + f'rho_lt_mcmc2{"_zero_out_etas" if zero_out_etas else ""}.csv')
 # del rhos
 
 
@@ -249,13 +251,13 @@ for i, res in all_res_2MCMC.items():
     nonzero_preds_5_mat = jnp.zeros((p,p))
     nonzero_preds_5_mat = nonzero_preds_5_mat.at[tril_idx].set(nonzero_preds_5)
     nonzero_preds_5_mat = pd.DataFrame(nonzero_preds_5_mat)
-    nonzero_preds_5_mat.to_csv(data_save_path + 'nonzero_preds_50_mat.csv')
+    nonzero_preds_5_mat.to_csv(data_save_path + f'nonzero_preds_50_mat{"_zero_out_etas" if zero_out_etas else ""}.csv')
     
     nonzero_preds_95 = (prob_slab_est>0.95).astype(int)
     nonzero_preds_95_mat = jnp.zeros((p,p))
     nonzero_preds_95_mat = nonzero_preds_95_mat.at[tril_idx].set(nonzero_preds_95)
     nonzero_preds_95_mat = pd.DataFrame(nonzero_preds_95_mat)
-    nonzero_preds_95_mat.to_csv(data_save_path + 'nonzero_preds_95_mat.csv')
+    nonzero_preds_95_mat.to_csv(data_save_path + f'nonzero_preds_95_mat{"_zero_out_etas" if zero_out_etas else ""}.csv')
   
     Pos_5 = jnp.where(nonzero_preds_5 == True)[0].shape[0]
     Neg_5 = jnp.where(nonzero_preds_5 == False)[0].shape[0]
@@ -512,7 +514,7 @@ for df_ix, df in enumerate(dfs):
 ax.legend(loc='upper left')
 plt.yticks(rotation = 90)
 fig.tight_layout()
-fig.savefig(data_save_path + 'Figures/' + 'COVID_SS_prob_slab.pdf')
+fig.savefig(data_save_path + 'Figures/' + f'COVID_SS_prob_slab{"_zero_out_etas" if zero_out_etas else ""}.pdf')
 plt.close()
 ################################################################################################
 
@@ -527,7 +529,7 @@ for df_ix, df in enumerate(dfs):
 ax.legend(loc='upper left')
 plt.yticks(rotation = 90)
 fig.tight_layout()
-fig.savefig(data_save_path + 'Figures/' + 'COVID_SS_mean_slab.pdf')
+fig.savefig(data_save_path + 'Figures/' + f'COVID_SS_mean_slab{"_zero_out_etas" if zero_out_etas else ""}.pdf')
 plt.close()
 ################################################################################################
 
@@ -558,7 +560,7 @@ ax.set_ylabel('Partial correlation (Network SS)')
 
 plt.yticks(rotation = 90) 
 fig.tight_layout()
-fig.savefig(data_save_path + 'Figures/' + 'COVID_SS_partial_corrs_SCI.pdf')
+fig.savefig(data_save_path + 'Figures/' + f'COVID_SS_partial_corrs_SCI{"_zero_out_etas" if zero_out_etas else ""}.pdf')
 plt.close()
 ################################################################################################
 
@@ -589,7 +591,7 @@ ax.set_ylabel('Partial correlation (Network SS)')
 
 plt.yticks(rotation = 90)
 fig.tight_layout()
-fig.savefig(data_save_path + 'Figures/' + 'COVID_SS_partial_corrs_GEO.pdf')
+fig.savefig(data_save_path + 'Figures/' + f'COVID_SS_partial_corrs_GEO{"_zero_out_etas" if zero_out_etas else ""}.pdf')
 plt.close()
 
 ################################################################################################
@@ -621,5 +623,5 @@ ax.set_ylabel('Partial correlation (Network SS)')
 
 plt.yticks(rotation = 90)
 fig.tight_layout()
-fig.savefig(data_save_path + 'Figures/' + 'COVID_SS_partial_corrs_FLIGHTS.pdf')
+fig.savefig(data_save_path + 'Figures/' + f'COVID_SS_partial_corrs_FLIGHTS{"_zero_out_etas" if zero_out_etas else ""}.pdf')
 plt.close()

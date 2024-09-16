@@ -373,12 +373,12 @@ fixed_params_dict = {"mu":mu_fixed, "scale_spike":scale_spike_fixed,
                      "eta1_coefs":jnp.array(etas_MAPs["eta1_coefs"]),
                     "eta2_0":etas_MAPs["eta2_0"], 
                      "eta2_coefs":jnp.array(etas_MAPs["eta2_coefs"]),
-                      "tilde_eta0_0":(etas_MAPs["eta0_0"]-my_model_args["eta0_0_m"])/my_model_args["eta0_0_s"], 
-                     "tilde_eta0_coefs":(jnp.array(etas_MAPs["eta0_coefs"])-my_model_args["eta0_coefs_m"])/my_model_args["eta0_coefs_s"],
-                    "tilde_eta1_0":(etas_MAPs["eta1_0"]-my_model_args["eta1_0_m"])/my_model_args["eta1_0_s"], 
-                     "tilde_eta1_coefs":(jnp.array(etas_MAPs["eta1_coefs"])-my_model_args["eta1_coefs_m"])/my_model_args["eta1_coefs_s"],
-                    "tilde_eta2_0":(etas_MAPs["eta2_0"]-my_model_args["eta2_0_m"])/my_model_args["eta2_0_s"], 
-                     "tilde_eta2_coefs":(jnp.array(etas_MAPs["eta2_coefs"])-my_model_args["eta2_coefs_m"])/my_model_args["eta2_coefs_s"]}
+                      "tilde_eta0_0":(etas_MAPs["eta0_0"]-my_model_args["eta0_0_m"])*(jnp.sqrt((p*(p-1)/2.0)/n)/my_model_args["eta0_0_s"]), 
+                     "tilde_eta0_coefs":(jnp.array(etas_MAPs["eta0_coefs"])-my_model_args["eta0_coefs_m"])*(jnp.sqrt((p*(p-1)/2.0)/n)/my_model_args["eta0_coefs_s"]),
+                    "tilde_eta1_0":(etas_MAPs["eta1_0"]-my_model_args["eta1_0_m"])*(jnp.sqrt((p*(p-1)/2.0)/n)/my_model_args["eta1_0_s"]), 
+                     "tilde_eta1_coefs":(jnp.array(etas_MAPs["eta1_coefs"])-my_model_args["eta1_coefs_m"])*(jnp.sqrt((p*(p-1)/2.0)/n)/my_model_args["eta1_coefs_s"]),
+                    "tilde_eta2_0":(etas_MAPs["eta2_0"]-my_model_args["eta2_0_m"])*(jnp.sqrt((p*(p-1)/2.0)/n)/my_model_args["eta2_0_s"]), 
+                     "tilde_eta2_coefs":(jnp.array(etas_MAPs["eta2_coefs"])-my_model_args["eta2_coefs_m"])*(jnp.sqrt((p*(p-1)/2.0)/n)/my_model_args["eta2_coefs_s"])}
 
 blocked_params_list = ["mu", "scale_spike", 
                        "tilde_eta0_0", "tilde_eta0_coefs", "tilde_eta1_0", "tilde_eta1_coefs", 

@@ -94,10 +94,11 @@ outputs = {"NetworkSS_geo_sci":output_dict_ss_geo_sci }
 with open(FLAGS.mcmc1_path, 'rb') as fr:
     res_ss_geo_sci = pickle.load(fr)
 
-# rhos = pd.DataFrame(res_ss_geo_sci['rho_lt'])
-# rhos.to_csv(data_save_path + 'rho_lt_mcmc1.csv')
-# del rhos
-# print('rhos saved!')
+rhos = pd.DataFrame(res_ss_geo_sci['rho_lt'])
+rhos.to_csv(data_save_path + 'rho_lt_mcmc1.csv')
+del rhos
+print('rhos saved!')
+
 for k in res_ss_geo_sci.keys():
     if k != 'warmup':
         try:

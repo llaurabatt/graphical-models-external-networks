@@ -31,7 +31,7 @@ data_save_path_COVID_9_spiketimes2 = _ROOT_DIR + 'NetworkSS_results_regression_e
 data_save_path_COVID_9_nonetworks = _ROOT_DIR + 'NetworkSS_results_regression_etarepr_brepr_newprior_seed9_centered_rotated_NONETWORKS/'
 
 data_path = './Data/COVID/Pre-processed Data/'
-data_save_path = data_save_path_COVID_9_spiketimes2 
+data_save_path = data_save_path_COVID_merge 
 # data_save_path2 = 
 
 #%%
@@ -40,11 +40,23 @@ data_save_path = data_save_path_COVID_9_spiketimes2
 # with open(data_save_path + 'NetworkSS_2mcmc_p332_w1000_s10000_regression.sav', 'rb') as fr:
 #     res_ss_geo_sci = pickle.load(fr)
 
-# with open(data_save_path + 'NetworkSS_1mcmc_p332_w10_s10_CP10_regression_nonetworks.sav', 'rb') as fr:
-#     res_ss_geo_sci = pickle.load(fr) 
-
-with open(data_save_path + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression_init_all_path.sav', 'rb') as fr:
+with open(data_save_path + 'NetworkSS_2mcmc_p332_w1000_s10000_regression_zero_out_etas.sav', 'rb') as fr:
     res_ss_geo_sci = pickle.load(fr)
+
+# with open(data_save_path + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression_nonetworks.sav', 'rb') as fr:
+#     res_ss_geo_sci = pickle.load(fr)
+
+# with open(data_save_path + 'NetworkSS_2mcmc_p332_w1000_s10000_regression_nonetworks.sav', 'rb') as fr:
+#     res_ss_geo_sci = pickle.load(fr)
+
+# with open(data_save_path + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
+#     res_ss_geo_sci = pickle.load(fr)
+
+# with open(data_save_path + 'Merge_NetworkSS_1mcmc_p332_w1000_s2000_regression.sav', 'rb') as fr:
+#     res_ss_geo_sci = pickle.load(fr)
+
+# with open(data_save_path + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression_init_all_path.sav', 'rb') as fr:
+#     res_ss_geo_sci = pickle.load(fr)
 
 # with open(data_save_path2 + 'NetworkSS_1mcmc_p332_w1000_s10000_CP10000_regression.sav', 'rb') as fr:
 #     res_ss_geo_sci2 = pickle.load(fr)
@@ -95,12 +107,18 @@ reg_mean = all_res['NetworkSS_geo_sci']['tilde_b_regression_coefs'].mean(axis=0)
 # reg_mean2 = res_ss_geo_sci2['tilde_b_regression_coefs'].mean(axis=0)
 # %%
 u_ESS = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0']['n_eff'] for b in all_res['NetworkSS_geo_sci']['u'].T])
-
+print('Mean ESS of u:', u_ESS.mean())
+# %%
 reg_ESS = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0']['n_eff'] for b in all_res['NetworkSS_geo_sci']['tilde_b_regression_coefs'].T])
 reg_rhat = jnp.array([numpyro.diagnostics.summary(jnp.expand_dims(b,0))['Param:0']['r_hat'] for b in all_res['NetworkSS_geo_sci']['tilde_b_regression_coefs'].T])
-print('Mean ESS of u:', u_ESS.mean())
+
 print('Mean ESS of regression coefs:', reg_ESS.mean())
+print('min ESS of regression coefs', min(reg_ESS))
 print('Mean r_hat of regression coefs:', reg_rhat.mean())
+reg_rhat1 = reg_rhat - 1
+print('max abs(rhat-1) of regression coefs:', max(np.abs(reg_rhat1)))
+print('mean abs(rhat-1) of regression coefs:', np.mean(np.abs(reg_rhat1)))
+
 
 # %%
 plt.suptitle('Trace plot first u')

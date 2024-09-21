@@ -1,10 +1,10 @@
 #%%
 """Main script for training the model."""
-import debugpy
-debugpy.listen(5678)
-print('Waiting for debugger')
-debugpy.wait_for_client()
-print('Debugger attached')
+# import debugpy
+# debugpy.listen(5678)
+# print('Waiting for debugger')
+# debugpy.wait_for_client()
+# print('Debugger attached')
 #%%
 # imports
 from absl import flags
@@ -29,14 +29,20 @@ _ROOT_DIR = "/home/paperspace/"
 os.chdir(_ROOT_DIR + 'graphical-models-external-networks/')
 sys.path.append(_ROOT_DIR + "graphical-models-external-networks/Network_Spike_and_Slab/numpyro/functions")
 
-data_path = './Data/Stock/Pre-processed Data/'
-data_save_path = _ROOT_DIR + 'stock_SS_etarepr_newprior_newlogrepr_seed6/'
 
-#%%
+data_save_path_last = 'stock_SS_etarepr_newprior_newlogrepr_seed6/'
+ 
+
+data_path = './Data/Stock/Pre-processed Data/'
+data_save_path = _ROOT_DIR + data_save_path_last
+
+# %%
 with open(data_save_path + 'NetworkSS_1mcmc_p366_w1000_s10000_CP10000.sav', 'rb') as fr:
     res_ss_E_P = pickle.load(fr)
-    
 
+# with open(data_save_path + 'NetworkSS_2mcmc_p366_w1000_s4000_seed6.sav', 'rb') as fr:
+#     res_ss_E_P = pickle.load(fr)    
+#%%
 uni_cols = ['eta0_0', 'eta1_0', 'eta2_0', 'tilde_eta0_0', 'tilde_eta1_0', 'tilde_eta2_0', 'potential_energy']
 res_ss_E_P = {k:v[:,None] if k in uni_cols else v for k,v in res_ss_E_P.items() }
 # res_ss_E_P2 = {k:v[:,None] if k in uni_cols else v for k,v in res_ss_E_P2.items() }

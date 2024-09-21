@@ -511,8 +511,9 @@ for A_ix, (A_k, vals) in enumerate(A_P_ints_10.items()):
     ax.plot(density+A_P_mids_10[A_ix], x_axis, alpha=0.3, c='gray')
     
 # ax.scatter(A_tril_P, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
-colors = np.where(outputs_1MCMC['NetworkSS_E_P']['nonzero_preds_5'][0]==1,'red','black')
-ax.scatter(A_tril_P, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color=colors, facecolors='none', label='partial correlations')
+# colors = np.where(outputs_1MCMC['NetworkSS_E_P']['nonzero_preds_5'][0]==1,'red','black')
+ax.scatter(A_tril_P, -rho_tril, s=18, linewidth=0.8, alpha=0.7, #color=colors, 
+           facecolors='none', label='partial correlations')
 
 ax.set_xlim(-5.5, 3)
 ax.set_ylim(-0.2, 0.7)
@@ -544,8 +545,9 @@ for A_ix, (A_k, vals) in enumerate(A_E_ints_10.items()):
     ax.plot(density+A_E_mids_10[A_ix], x_axis, alpha=0.3, c='gray')
 
 # ax.scatter(A_tril_E, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color='black', facecolors='none', label='partial correlations')
-colors = np.where(outputs_1MCMC['NetworkSS_E_P']['nonzero_preds_5'][0]==1,'red','black')    
-ax.scatter(A_tril_E, -rho_tril, s=18, linewidth=0.8, alpha=0.7, color=colors, facecolors='none', label='partial correlations')
+# colors = np.where(outputs_1MCMC['NetworkSS_E_P']['nonzero_preds_5'][0]==1,'red','black')    
+ax.scatter(A_tril_E, -rho_tril, s=18, linewidth=0.8, alpha=0.7, #color=colors, 
+           facecolors='none', label='partial correlations')
 ax.set_xlim(-2.5, 4)
 ax.set_ylim(-0.2, 0.7)
 ax.set_xlabel('Economic Risks Similarity Index')

@@ -78,6 +78,7 @@ def mcmc1_init(my_vals,
         my_covariates = my_model_args['X'] 
         _,_, q = my_covariates.shape
     except:
+        my_covariates = None
         q = None
     n_nets = len(my_model_args['A_list'])
     print(f"NetworkSS, n {n}, p {p}, number of networks {n_nets}")

@@ -503,11 +503,13 @@ dfs = [Network_df_geo, Network_df_sci, Network_df_flights]
 df_names = ['geo', 'sci', 'flights']
 ticklabs = [A_geo_mids_20, A_sci_mids_20, A_flights_mids_20 ]
 legendlabs = ['Geographical Closeness Network', 'Facebook Connectivity Index', 'Flights Connectivity Network']
-colors = ['black', 'gray', 'blue']
+colors = ['gray', 'black', 'black']
+linestyles = ['-', 'dotted', '-']
 
 
 for df_ix, df in enumerate(dfs):
-    ax.plot(ticklabs[df_ix], df['w_slab'].values, linewidth=1.2, label=legendlabs[df_ix], color=colors[df_ix])
+    ax.plot(ticklabs[df_ix], df['w_slab'].values, linewidth=1.2, label=legendlabs[df_ix], 
+            linestyle=linestyles[df_ix], color=colors[df_ix])
 
     ax.set_ylabel('Probability of slab')
     ax.set_xlabel('Network values')
@@ -522,7 +524,8 @@ plt.close()
 fig, ax = plt.subplots( figsize=(5,4))
 
 for df_ix, df in enumerate(dfs):
-    ax.plot(ticklabs[df_ix], df['mean_slab'].values, linewidth=1.2, label=legendlabs[df_ix], color=colors[df_ix])
+    ax.plot(ticklabs[df_ix], df['mean_slab'].values, linewidth=1.2, label=legendlabs[df_ix], 
+            linestyle=linestyles[df_ix], color=colors[df_ix])
 
     ax.set_ylabel('Slab location')
     ax.set_xlabel('Network values')

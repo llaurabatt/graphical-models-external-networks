@@ -120,7 +120,9 @@ covid_mcmc_args = {"A_list":A_list,
 
 mcmc1_init(my_model=my_model, thinning=thinning, my_vals=stock_vals,
         my_model_args=covid_mcmc_args, n_samples=n_samples,
-        root_dir=_ROOT_DIR, data_save_path=data_save_path, seed=SEED, init_strategy=init_strategy)
+        root_dir=_ROOT_DIR, data_save_path=data_save_path, seed=SEED, init_strategy=init_strategy,
+        no_networks=False, scale_spike_fixed=0.0033341, b_init=None,
+        store_warmup=False, init_all_path=None)
 
 # TO-DO: stop-and-start chain not working at the moment
 # if CP_init >= n_samples:

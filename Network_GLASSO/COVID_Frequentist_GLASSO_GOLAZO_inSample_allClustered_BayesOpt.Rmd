@@ -16,8 +16,8 @@ Here I run GLASSO and GOLAZO using the Geodist and Facebook networks on the meta
 ```{r working_directory, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
 
 #data_dir <- '/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/COVID_DATA'
-data_dir <- '/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/COVID_DATA/flight_compatible_data'
-
+#data_dir <- '/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/COVID_DATA/flight_compatible_data'
+data_dir <- "C:/Users/jjew0003/Documents/BarcelonaProjects/GraphicalModels_NetworkData/COVID_DATA"
 ```
 
 ## Packages
@@ -33,7 +33,8 @@ library(devtools)
 #install_github("pzwiernik/golazo", build_vignettes=TRUE)
 #library(golazo) ## I now call the function with the pd.solve
 #source('C:/Users/JeJewson/Documents/Barcelona_Yr1/LisCode/GOLAZO_function.R')
-source("/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/GOLAZO_function_pd_solve.R")
+#source("/home/usuario/Documents/Barcelona_Yr1/GraphicalModels_NetworkData/LiLicode/GOLAZO_function_pd_solve.R")
+source("C:/Users/jjew0003/Documents/BarcelonaProjects/GraphicalModels_NetworkData/GOLAZO_function_pd_solve.R")
 library(polynom)
 
 library(graphics)
@@ -46,7 +47,8 @@ library(knitr)
 
 library(ggmap)   # spatial tools to interact with ggplot2
 library(ggplot2) # tidyverse: actually more basic than base R plotting
-library(usmap)
+library(usmap) # they updated this package
+library(sf)
 
 library(rBayesianOptimization)
 
@@ -64,7 +66,8 @@ library(doParallel)
 cores=detectCores()
 #cores <- cores[1] - 1 #not to overload your computer
 #cores <- 10
-cores <- 5
+#cores <- 5
+cores <- 1
 cl <- makeCluster(cores) 
 registerDoParallel(cl)
 
@@ -235,8 +238,9 @@ covid1 <- as.matrix(read_csv("COVID_332_meta_pruned.csv"))[,-1]
 geodist1 <- as.matrix(read_csv("geodist_332_meta_pruned.csv"))[,-1]
 SCI_index1 <- as.matrix(read_csv("sci_index_332_meta_pruned.csv"))[,-1]
 #Flights1 <- as.matrix(read_csv("flights_332_meta.csv"))[,-1]
-Flights1 <- as.matrix(read_csv("meta_flights_332/flights_332_meta_capacity.csv"))[,-1]
-Flights2 <- as.matrix(read_csv("meta_flights_332/flights_332_meta_nocapacity.csv"))[,-1]
+#Flights1 <- as.matrix(read_csv("meta_flights_332/flights_332_meta_capacity.csv"))[,-1]
+Flights1 <- as.matrix(read_csv("flights_332_meta_capacity.csv"))[,-1]
+#Flights2 <- as.matrix(read_csv("meta_flights_332/flights_332_meta_nocapacity.csv"))[,-1]
 #Flights1 <- as.matrix(read_csv("flights_332_meta_unadjusted.csv"))[,-1]
 
 n <- nrow(covid1)
@@ -398,7 +402,7 @@ beta0_grid_min <- -2
 ebic_eval_optim_GLASSO <- rep(NA, N)
 
 time_GLASSO_freq.start <- Sys.time()
-for(j in 1:N){
+for(j in 1:N){ebic_eval
   
   #### Estimating lambda ####
   R <- stats::cov2cor(cov(covid1))  
@@ -524,6 +528,7 @@ m1 <- m1 %>%
   rename_all(~stringr::str_replace(.,"^V",""))    ## remove the prefix of colnames
 
 rownames(m1) <- sprintf('%s', 0:331)
+colnames(m1) <- sprintf('%s', 0:331)
 
 m1 <-data.frame(from =rownames(m1)[row(m1)[upper.tri(m1)]], 
                 to =colnames(m1)[col(m1)[upper.tri(m1)]], 
@@ -543,6 +548,8 @@ edges_for_plot <- edges %>%
 
 ```
 
+*LI UPDATED THIS CODE FOR ME!* 
+
 ```{r GLASSO_Map_Plot3, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
 
 ## plot of GLASSO
@@ -550,30 +557,30 @@ edges_for_plot <- edges %>%
 ## transform nodes and edges
 #nodes_ordered <- nodes[, c(2, 3, 4, 5, 1)]
 nodes_ordered <- nodes_new[, c(2, 3, 1)]
-#nodes_transformed <- usmap_transform(nodes_ordered)
-nodes_transformed <- usmap_transform(nodes_ordered, input_names = c("lon", "lat"), output_names = c("lon.1", "lat.1"))
+
+# Transforming node coordinates using usmap_transform function
+nodes_transformed <- usmap_transform(nodes_ordered, input_names = c("lon", "lat"))
+
+# Transforming edge coordinates using usmap_transform function for both start and end points
+edges_for_plot_transformed <- usmap_transform(edges_for_plot, input_names = c("x", "y"))   %>% arrange(to) %>% arrange(from)
+edges_for_plot_transformed2 <- usmap_transform(edges_for_plot, input_names = c("xend", "yend"))   %>% arrange(to) %>% arrange(from)
+
+# Merging transformed edge coordinates into a single data frame
+merged_data_sf <- cbind(edges_for_plot_transformed, edges_for_plot_transformed2)
 
 
-edges_for_plot_ordered <- edges_for_plot[, c(4, 5, 6, 7, 1, 2, 3)]
-edges_for_plot_transformed <- usmap_transform(edges_for_plot_ordered, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
-edges_for_plot_transformed_ordered <- edges_for_plot_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
-edges_for_plot_transformed2 <- usmap_transform(edges_for_plot_transformed_ordered, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+par(mar = c(0.25, 3.6, 1.5, 1.1))  # bottom, left, top, right
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
 
 
 plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
-  #ggrepel::geom_label_repel(data = nodes_transformed,
-                            #aes(x = lon.1, y = lat.1, label = County1),
-  #                          aes(x = lon.1, y = lat.1, label = id),
-  #                          size = 3, alpha = 0.8,
-                            #label.r = unit(0.5, "lines"), label.size = 0.5,
-  #                          label.r = unit(0.5, "lines"), label.size = 0,
-                            # segment.color = "red", segment.size = 1,
-  #                          seed = 1002) +
-  geom_segment(data = edges_for_plot_transformed2, 
-               aes(x = x.1, xend = xend.1,
-                   y = y.1, yend = yend.1),
-               color = "blue", size = 0.35, alpha = 0.5) +
-  geom_point(data = nodes_transformed, aes(x = lon.1, y = lat.1),
+  geom_segment(data = merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, 
+             aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
              fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
   labs(title = "Geospatial Network of GLASSO",
        subtitle = "The Edges Estimated from GLASSO and US Map",
@@ -592,24 +599,18 @@ par(mgp = c(2.15, 1, 0))
 par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
 
 plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
-  #ggrepel::geom_label_repel(data = nodes_transformed,
-                            #aes(x = lon.1, y = lat.1, label = County1),
-  #                          aes(x = lon.1, y = lat.1, label = id),
-  #                          size = 3, alpha = 0.8,
-                            #label.r = unit(0.5, "lines"), label.size = 0.5,
-  #                          label.r = unit(0.5, "lines"), label.size = 0,
-                            # segment.color = "red", segment.size = 1,
-  #                          seed = 1002) +
-  geom_point(data = nodes_transformed, aes(x = lon.1, y = lat.1),
-             fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
-  geom_segment(data = edges_for_plot_transformed2, 
-               aes(x = x.1, xend = xend.1,
-                   y = y.1, yend = yend.1),
-               color = "blue", size = 0.35, alpha = 0.5) #+
+  geom_segment(data = merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, 
+             aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+             fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) #+
   #labs(title = "Geospatial Network of GLASSO",
   #     subtitle = "The Edges Estimated from GLASSO and US Map",
   #     size = "Magnitude") +
-  #theme(legend.position = "right")
+  #theme(legend.position = "right", plot.margin = unit(c(0.25,0,0,0), "cm"))
+#top, right, bottom, left
 
 ```
 
@@ -762,6 +763,75 @@ plot(A1_plot_bin_mid, log(aggregate(df_A1_plot$partial_corr_GLASSO^2, list(df_A1
 
 ```
 
+Motivation for spike and slab extension, plotitng the mean of non-zeros and proportion of 0s with the networks (all equi-spaced bins)
+
+```{r GLASSO_vs_A1_2_mean, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+# Calculate the mean of non-zero values of partial_corr_GLASSO for each bin
+mean_non_zero <- aggregate(df_A1_plot$partial_corr_GLASSO, list(df_A1_plot$A1_plot_bin), FUN = function(x) mean(x[x != 0]))
+
+# Plot the scatter plot
+plot(A1_plot_bin_mid, mean_non_zero$x, xlab = "Geographical Closeness Network ($A_1$)", ylab = "Mean of non-zero estimates", main = "")
+
+
+```
+
+```{r GLASSO_vs_A1_2_mean_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 3, fig.width = 5, dev = "tikz"}
+
+par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+#https://www.r-bloggers.com/2010/06/setting-graph-margins-in-r-using-the-par-function-and-lots-of-cow-milk/
+#par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right - these are in terms o lines
+par(mai = 0.2*c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right - these are of inches where each line is 0.2 inches
+
+# Calculate the mean of non-zero values of partial_corr_GLASSO for each bin
+mean_non_zero <- aggregate(df_A1_plot$partial_corr_GLASSO, list(df_A1_plot$A1_plot_bin), FUN = function(x) mean(x[x != 0]))
+
+# Plot the scatter plot
+plot(A1_plot_bin_mid, mean_non_zero$x, xlab = "Geographical Closeness Network ($A_1$)", ylab = "$\\hat{E}[\\rho_{ij} | \\rho_{ij} \\neq 0, A_1]$", main = "")
+
+
+```
+
+```{r GLASSO_vs_A1_2_logit, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+non_zero_counts <- aggregate(as.numeric(df_A1_plot$partial_corr_GLASSO != 0), list(df_A1_plot$A1_plot_bin), sum)
+zero_counts <- aggregate(as.numeric(df_A1_plot$partial_corr_GLASSO == 0), list(df_A1_plot$A1_plot_bin), sum)
+
+# Calculate the logit proportion of non-zero values
+logit_proportions <- log(non_zero_counts$x / zero_counts$x )
+# Plot the scatter plot
+plot(A1_plot_bin_mid, logit_proportions, xlab = "Geographical Closeness Network ($A_1$)", ylab = "logit proportion of non-zero estimates", main = "")
+
+
+```
+
+```{r GLASSO_vs_A1_2_logit_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 3, fig.width = 5, dev = "tikz"}
+par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+#https://www.r-bloggers.com/2010/06/setting-graph-margins-in-r-using-the-par-function-and-lots-of-cow-milk/
+#par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right - these are in terms o lines
+par(mai = 0.2*c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right - these are of inches where each line is 0.2 inches
+
+non_zero_counts <- aggregate(as.numeric(df_A1_plot$partial_corr_GLASSO != 0), list(df_A1_plot$A1_plot_bin), sum)
+zero_counts <- aggregate(as.numeric(df_A1_plot$partial_corr_GLASSO == 0), list(df_A1_plot$A1_plot_bin), sum)
+
+# Calculate the logit proportion of non-zero values
+logit_proportions <- log(non_zero_counts$x / zero_counts$x )
+# Plot the scatter plot
+plot(A1_plot_bin_mid, logit_proportions, xlab = "Geographical Closeness Network ($A_1$)", ylab = "logit$\\hat{P}[\\rho_{ij} \\neq 0 | A_1]$", main = "")
+
+
+```
+
 ## Facebook (A2)
 
 ```{r Theta_vs_A2, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
@@ -907,6 +977,75 @@ plot(A2_plot_bin_mid, log(aggregate(df_A2_plot$partial_corr_GLASSO^2, list(df_A2
 
 ```
 
+Motivation for spike and slab extension, plotitng the mean of non-zeros and proportion of 0s with the networks (all equi-spaced bins)
+
+```{r GLASSO_vs_A2_2_mean, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+# Calculate the mean of non-zero values of partial_corr_GLASSO for each bin
+mean_non_zero <- aggregate(df_A2_plot$partial_corr_GLASSO, list(df_A2_plot$A2_plot_bin), FUN = function(x) mean(x[x != 0]))
+
+# Plot the scatter plot
+plot(A2_plot_bin_mid, mean_non_zero$x, xlab = "Facebook Connectivity Index ($A_2$)", ylab = "Mean of non-zero estimates", main = "")
+
+
+```
+
+```{r GLASSO_vs_A2_2_mean_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 3, fig.width = 5, dev = "tikz"}
+
+par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+#https://www.r-bloggers.com/2010/06/setting-graph-margins-in-r-using-the-par-function-and-lots-of-cow-milk/
+#par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right - these are in terms o lines
+par(mai = 0.2*c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right - these are of inches where each line is 0.2 inches
+
+# Calculate the mean of non-zero values of partial_corr_GLASSO for each bin
+mean_non_zero <- aggregate(df_A2_plot$partial_corr_GLASSO, list(df_A2_plot$A2_plot_bin), FUN = function(x) mean(x[x != 0]))
+
+# Plot the scatter plot
+plot(A2_plot_bin_mid, mean_non_zero$x, xlab = "Facebook Connectivity Index ($A_2$)", ylab = "$\\hat{E}[\\rho_{ij} | \\rho_{ij} \\neq 0, A_2]$", main = "")
+
+
+```
+
+```{r GLASSO_vs_A2_2_logit, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+non_zero_counts <- aggregate(as.numeric(df_A2_plot$partial_corr_GLASSO != 0), list(df_A2_plot$A2_plot_bin), sum)
+zero_counts <- aggregate(as.numeric(df_A2_plot$partial_corr_GLASSO == 0), list(df_A2_plot$A2_plot_bin), sum)
+
+# Calculate the logit proportion of non-zero values
+logit_proportions <- log(non_zero_counts$x / zero_counts$x )
+# Plot the scatter plot
+plot(A2_plot_bin_mid, logit_proportions, xlab = "Facebook Connectivity Index ($A_2$)", ylab = "logit proportion of non-zero estimates", main = "")
+
+
+```
+
+```{r GLASSO_vs_A2_2_logit_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 3, fig.width = 5, dev = "tikz"}
+par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+#https://www.r-bloggers.com/2010/06/setting-graph-margins-in-r-using-the-par-function-and-lots-of-cow-milk/
+#par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right - these are in terms o lines
+par(mai = 0.2*c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right - these are of inches where each line is 0.2 inches
+
+non_zero_counts <- aggregate(as.numeric(df_A2_plot$partial_corr_GLASSO != 0), list(df_A2_plot$A2_plot_bin), sum)
+zero_counts <- aggregate(as.numeric(df_A2_plot$partial_corr_GLASSO == 0), list(df_A2_plot$A2_plot_bin), sum)
+
+# Calculate the logit proportion of non-zero values
+logit_proportions <- log(non_zero_counts$x / zero_counts$x )
+# Plot the scatter plot
+plot(A2_plot_bin_mid, logit_proportions, xlab = "Facebook Connectivity Index ($A_2$)", ylab = "logit$\\hat{P}[\\rho_{ij} \\neq 0 | A_2]$", main = "")
+
+
+```
+
 ## Geodist (A3)
 
 ```{r Theta_vs_A3, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
@@ -916,10 +1055,10 @@ A3 <- log(A3+1) ## necessary - more flights = more connected
 A3 <- standardise_network_matrix_tri(A3)
 diag(A3) <- 0
 
-A32 <- as.matrix(Flights2)
-A32 <- log(A32+1) ## necessary - more flights = more connected  
-A32 <- standardise_network_matrix_tri(A32)
-diag(A32) <- 0
+#A32 <- as.matrix(Flights2)
+#A32 <- log(A32+1) ## necessary - more flights = more connected  
+#A32 <- standardise_network_matrix_tri(A32)
+#diag(A32) <- 0
 
 ```
 
@@ -943,19 +1082,19 @@ plot(as.vector(A1_plot), as.vector(A2_plot), xlab = "Geodist", ylab = "Facebook"
 plot(as.vector(A1_plot), as.vector(A3_plot), xlab = "Geodist", ylab = "Flights")
 plot(as.vector(A1_plot), as.vector(A3_plot), xlab = "Facebook", ylab = "Flights")
 
-A32_plot <- A32[upper.tri(A32)]
+#A32_plot <- A32[upper.tri(A32)]
 
 #DAVID. USING LOESS INSTEAD OF LOWESS. IT FITS THE DATA BETTER
-plot(x = A32_plot, y = partial_corr_GLASSO, xlab = "Flight Network2", ylab ="Partial Correlation (GLASSO)")
-#l <- loess(partial_corr_GLASSO ~ A3_plot)
-#o <- order(l$x)
-#lines(l$x[o], l$fitted[o], col='red')
+#plot(x = A32_plot, y = partial_corr_GLASSO, xlab = "Flight Network2", ylab ="Partial Correlation (GLASSO)")
+##l <- loess(partial_corr_GLASSO ~ A3_plot)
+##o <- order(l$x)
+##lines(l$x[o], l$fitted[o], col='red')
 
-cov2cor(cov(cbind(as.vector(A1_plot), as.vector(A2_plot), as.vector(A32_plot))))
+#cov2cor(cov(cbind(as.vector(A1_plot), as.vector(A2_plot), as.vector(A32_plot))))
 
-plot(as.vector(A1_plot), as.vector(A2_plot), xlab = "Geodist", ylab = "Facebook")
-plot(as.vector(A1_plot), as.vector(A32_plot), xlab = "Geodist", ylab = "Flights2")
-plot(as.vector(A1_plot), as.vector(A32_plot), xlab = "Facebook", ylab = "Flights2")
+#plot(as.vector(A1_plot), as.vector(A2_plot), xlab = "Geodist", ylab = "Facebook")
+#plot(as.vector(A1_plot), as.vector(A32_plot), xlab = "Geodist", ylab = "Flights2")
+#plot(as.vector(A1_plot), as.vector(A32_plot), xlab = "Facebook", ylab = "Flights2")
 
 ```
 
@@ -985,8 +1124,8 @@ A3_plot_plot <- A3_plot[- drop_ind]
 
 plot(x = A3_plot_plot, y = partial_corr_GLASSO_plot, xlab = "Flights Connectivity Network", ylab ="Partial Correlation (GLASSO)")
 
-A32_plot_plot <- A32_plot[- drop_ind]
-plot(x = A32_plot_plot, y = partial_corr_GLASSO_plot, xlab = "Flight Network (not capacity adjusted)", ylab ="Partial Correlation (GLASSO)")
+#A32_plot_plot <- A32_plot[- drop_ind]
+#plot(x = A32_plot_plot, y = partial_corr_GLASSO_plot, xlab = "Flight Network (not capacity adjusted)", ylab ="Partial Correlation (GLASSO)")
 
 ```
 
@@ -1081,6 +1220,75 @@ plot(A3_plot_bin_mid, log(aggregate(df_A3_plot$partial_corr_GLASSO^2, list(df_A3
 
 ```
 
+Motivation for spike and slab extension, plotitng the mean of non-zeros and proportion of 0s with the networks (all equi-spaced bins)
+
+```{r GLASSO_vs_A3_2_mean, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+# Calculate the mean of non-zero values of partial_corr_GLASSO for each bin
+mean_non_zero <- aggregate(df_A3_plot$partial_corr_GLASSO, list(df_A3_plot$A3_plot_bin), FUN = function(x) mean(x[x != 0]))
+
+# Plot the scatter plot
+plot(A3_plot_bin_mid, mean_non_zero$x, xlab = "Flights Connectivity Network ($A_3$)", ylab = "Mean of non-zero estimates", main = "")
+
+
+```
+
+```{r GLASSO_vs_A3_2_mean_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 3, fig.width = 5, dev = "tikz"}
+
+par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+#https://www.r-bloggers.com/2010/06/setting-graph-margins-in-r-using-the-par-function-and-lots-of-cow-milk/
+#par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right - these are in terms o lines
+par(mai = 0.2*c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right - these are of inches where each line is 0.2 inches
+
+# Calculate the mean of non-zero values of partial_corr_GLASSO for each bin
+mean_non_zero <- aggregate(df_A3_plot$partial_corr_GLASSO, list(df_A3_plot$A3_plot_bin), FUN = function(x) mean(x[x != 0]))
+
+# Plot the scatter plot
+plot(A3_plot_bin_mid, mean_non_zero$x, xlab = "Flights Connectivity Network ($A_3$)", ylab = "$\\hat{E}[\\rho_{ij} | \\rho_{ij} \\neq 0, A_3]$", main = "")
+
+
+```
+
+```{r GLASSO_vs_A3_2_logit, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+non_zero_counts <- aggregate(as.numeric(df_A3_plot$partial_corr_GLASSO != 0), list(df_A3_plot$A3_plot_bin), sum)
+zero_counts <- aggregate(as.numeric(df_A3_plot$partial_corr_GLASSO == 0), list(df_A3_plot$A3_plot_bin), sum)
+
+# Calculate the logit proportion of non-zero values
+logit_proportions <- log(non_zero_counts$x / zero_counts$x )
+# Plot the scatter plot
+plot(A3_plot_bin_mid, logit_proportions, xlab = "Flights Connectivity Network ($A_3$)", ylab = "logit proportion of non-zero estimates", main = "")
+
+
+```
+
+```{r GLASSO_vs_A3_2_logit_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 3, fig.width = 5, dev = "tikz"}
+par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right
+#par(mar = c(5.1, 4.1, 4.1, 2.1)) # Default
+#par(mgp = c(3, 1, 0)) # Default - location of xlab and ylab, tick-mark labels, tick marks.
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+#https://www.r-bloggers.com/2010/06/setting-graph-margins-in-r-using-the-par-function-and-lots-of-cow-milk/
+#par(mar = c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right - these are in terms o lines
+par(mai = 0.2*c(3.5, 3.8, 1.5, 1.1)) # bottom, left, top, right - these are of inches where each line is 0.2 inches
+
+non_zero_counts <- aggregate(as.numeric(df_A3_plot$partial_corr_GLASSO != 0), list(df_A3_plot$A3_plot_bin), sum)
+zero_counts <- aggregate(as.numeric(df_A3_plot$partial_corr_GLASSO == 0), list(df_A3_plot$A3_plot_bin), sum)
+
+# Calculate the logit proportion of non-zero values
+logit_proportions <- log(non_zero_counts$x / zero_counts$x )
+# Plot the scatter plot
+plot(A3_plot_bin_mid, logit_proportions, xlab = "Flights Connectivity Network ($A_3$)", ylab = "logit$\\hat{P}[\\rho_{ij} \\neq 0 | A_3]$", main = "")
+
+
+```
+
 
 # GOLAZO - Geodist (A1) {.tabset}
 
@@ -1170,6 +1378,8 @@ time_GOLAZO_A1_freq
 
 ## Map Plots
 
+*LI'S UPDATED CODE*
+
 ```{r GOLAZO_A1_Map_Plot2, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
 
 write.csv(- Rho_hat_GOLAZO_A1_full , file = paste("mRho_hat_GOLAZO_A1_full", ".csv", sep = ""))
@@ -1183,6 +1393,7 @@ mydf_A1 <- mydf_A1 %>%
   rename_all(~stringr::str_replace(.,"^V",""))    ## remove the prefix of colnames
 
 rownames(mydf_A1) <- sprintf('%s', 0:331)
+colnames(mydf_A1) <- sprintf('%s', 0:331)
 
 mydf_A1 <-data.frame(from =rownames(mydf_A1)[row(mydf_A1)[upper.tri(mydf_A1)]], 
                 to =colnames(mydf_A1)[col(mydf_A1)[upper.tri(mydf_A1)]], 
@@ -1209,29 +1420,26 @@ edges_for_plot_A1 <- edges_A1 %>%
 ## transform nodes and edges
 #nodes_ordered <- nodes[, c(2, 3, 4, 5, 1)]
 nodes_ordered <- nodes_new[, c(2, 3, 1)]
-#nodes_transformed <- usmap_transform(nodes_ordered)
-nodes_transformed <- usmap_transform(nodes_ordered, input_names = c("lon", "lat"), output_names = c("lon.1", "lat.1"))
 
+# Transforming node coordinates using usmap_transform function
+nodes_transformed <- usmap_transform(nodes_ordered, input_names = c("lon", "lat"))
 
-edges_for_plot_A1_ordered <- edges_for_plot_A1[, c(4, 5, 6, 7, 1, 2, 3)]
-edges_for_plot_A1_transformed <- usmap_transform(edges_for_plot_A1_ordered, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
-edges_for_plot_A1_transformed_ordered <- edges_for_plot_A1_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
-edges_for_plot_A1_transformed2 <- usmap_transform(edges_for_plot_A1_transformed_ordered, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+# Transforming edge coordinates using usmap_transform function for both start and end points
+edges_for_plot_A1_transformed <- usmap_transform(edges_for_plot_A1, input_names = c("x", "y"))   %>% arrange(to) %>% arrange(from)
+edges_for_plot_A1_transformed2 <- usmap_transform(edges_for_plot_A1, input_names = c("xend", "yend"))   %>% arrange(to) %>% arrange(from)
+
+# Merging transformed edge coordinates into a single data frame
+merged_data_sf <- cbind(edges_for_plot_A1_transformed, edges_for_plot_A1_transformed2)
+
 
 
 plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
-  #ggrepel::geom_label_repel(data = nodes_transformed,
-  #                          aes(x = lon.1, y = lat.1, label = County1),
-  #                          size = 3, alpha = 0.8,
-  #                          label.r = unit(0.5, "lines"), label.size = 0.5,
-                            # segment.color = "red", segment.size = 1,
-  #                          seed = 1002) +
-  geom_segment(data = edges_for_plot_A1_transformed2, 
-               aes(x = x.1, xend = xend.1,
-                   y = y.1, yend = yend.1),
+  geom_segment(data = merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
                color = "red", size = 0.35, alpha = 0.5) +
-  geom_point(data = nodes_transformed, aes(x = lon.1, y = lat.1),
-             fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
   labs(title = "Geospatial Network of GOLAZO - A1",
        subtitle = "The Edges Estimated from GOLAZO - A1 and US Map",
        size = "Magnitude") +
@@ -1248,22 +1456,16 @@ par(mgp = c(2.15, 1, 0))
 par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
 
 plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
-  #ggrepel::geom_label_repel(data = nodes_transformed,
-  #                          aes(x = lon.1, y = lat.1, label = County1),
-  #                          size = 3, alpha = 0.8,
-  #                          label.r = unit(0.5, "lines"), label.size = 0.5,
-                            # segment.color = "red", segment.size = 1,
-  #                          seed = 1002) +
-  geom_point(data = nodes_transformed, aes(x = lon.1, y = lat.1),
-             fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
-  geom_segment(data = edges_for_plot_A1_transformed2, 
-               aes(x = x.1, xend = xend.1,
-                   y = y.1, yend = yend.1),
-               color = "red", size = 0.35, alpha = 0.5) #+
-  #labs(title = "Geospatial Network of GOLAZO - A1",
-  #     subtitle = "The Edges Estimated from GOLAZO - A1 and US Map",
-  #     size = "Magnitude") +
-  #theme(legend.position = "right")
+  geom_segment(data = merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) #+
+#  labs(title = "Geospatial Network of GOLAZO - A1",
+#       subtitle = "The Edges Estimated from GOLAZO - A1 and US Map",
+#       size = "Magnitude") +
+#  theme(legend.position = "right")
 
 ```
 
@@ -1296,30 +1498,55 @@ unique_A1_edges_for_plot <- unique_A1_edges %>%
 
 ```{r GOLAZO_unique_A1_Map_Plot3, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
 
+## OLD ##
+
 unique_A1_edges_for_plot <- unique_A1_edges_for_plot[, c(4, 5, 6, 7, 1, 2, 3)]
-unique_A1_transformed <- usmap_transform(unique_A1_edges_for_plot, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
-unique_A1_transformed <- unique_A1_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
-unique_A1_transformed <- usmap_transform(unique_A1_transformed, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+#unique_A1_transformed <- usmap_transform(unique_A1_edges_for_plot, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
+#unique_A1_transformed <- unique_A1_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
+#unique_A1_transformed <- usmap_transform(unique_A1_transformed, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
 
 ## connections unique in A1
+#plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+#  #ggrepel::geom_label_repel(data = nodes_transformed,
+#  #                          aes(x = lon.1, y = lat.1, label = County1),
+#  #                          size = 3, alpha = 0.8,
+#  #                          label.r = unit(0.5, "lines"), label.size = 0.5
+#  #                          , seed = 1002) +
+#  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_segment(data = unique_A1_transformed, 
+#               aes(x = x.1, xend = xend.1,
+#                   y = y.1, yend = yend.1),
+#               color = "red",size = 0.35, alpha = 0.5) +
+#  labs(title = "Edges Unique in GOLAZO-A1",
+#       # subtitle = "Lines: red for GOLAZO_A1",
+#       size = "Magnitude") +
+#  theme(legend.position = "right")
+
+## NEW ## - below is my attemot at applying the above to Li's code
+
+# Transforming edge coordinates using usmap_transform function for both start and end points
+unique_A1_transformed <- usmap_transform(unique_A1_edges_for_plot, input_names = c("x", "y"))   %>% arrange(to) %>% arrange(from) 
+unique_A1_transformed2 <- usmap_transform(unique_A1_edges_for_plot, input_names = c("xend", "yend"))   %>% arrange(to) %>% arrange(from)
+
+# Merging transformed edge coordinates into a single data frame
+unique_A1_merged_data_sf <- cbind(unique_A1_transformed, unique_A1_transformed2)
+
+
+
 plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
-  #ggrepel::geom_label_repel(data = nodes_transformed,
-  #                          aes(x = lon.1, y = lat.1, label = County1),
-  #                          size = 3, alpha = 0.8,
-  #                          label.r = unit(0.5, "lines"), label.size = 0.5
-  #                          , seed = 1002) +
-  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_segment(data = unique_A1_transformed, 
-               aes(x = x.1, xend = xend.1,
-                   y = y.1, yend = yend.1),
-               color = "red",size = 0.35, alpha = 0.5) +
+  geom_segment(data = unique_A1_merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
   labs(title = "Edges Unique in GOLAZO-A1",
-       # subtitle = "Lines: red for GOLAZO_A1",
+       subtitle = "The Edges Estimated from GOLAZO - A1 but not GLASSO and US Map",
        size = "Magnitude") +
   theme(legend.position = "right")
 
@@ -1334,28 +1561,38 @@ par(mgp = c(2.15, 1, 0))
 par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
 
 ## connections unique in A1
+#plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+#  #ggrepel::geom_label_repel(data = nodes_transformed,
+#  #                          aes(x = lon.1, y = lat.1, label = County1),
+#  #                          size = 3, alpha = 0.8,
+#  #                          label.r = unit(0.5, "lines"), label.size = 0.5
+#  #                          , seed = 1002) +
+#  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_segment(data = unique_A1_transformed, 
+#               aes(x = x.1, xend = xend.1,
+#                   y = y.1, yend = yend.1),
+#               color = "red",size = 0.35, alpha = 0.5) #+
+#  #labs(title = "Edges Unique in GOLAZO-A1",
+#  #     # subtitle = "Lines: red for GOLAZO_A1",
+#  #     size = "Magnitude") +
+#  #theme(legend.position = "right")
+
 plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
-  #ggrepel::geom_label_repel(data = nodes_transformed,
-  #                          aes(x = lon.1, y = lat.1, label = County1),
-  #                          size = 3, alpha = 0.8,
-  #                          label.r = unit(0.5, "lines"), label.size = 0.5
-  #                          , seed = 1002) +
-  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_segment(data = unique_A1_transformed, 
-               aes(x = x.1, xend = xend.1,
-                   y = y.1, yend = yend.1),
-               color = "red",size = 0.35, alpha = 0.5) #+
+  geom_segment(data = unique_A1_merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) #+
   #labs(title = "Edges Unique in GOLAZO-A1",
-  #     # subtitle = "Lines: red for GOLAZO_A1",
+  #     subtitle = "The Edges Estimated from GOLAZO - A1 but not GLASSO and US Map",
   #     size = "Magnitude") +
   #theme(legend.position = "right")
-
-
 
 
 ```
@@ -1365,7 +1602,7 @@ plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
 
 ## Inference
 
-```{r GOLAZO_A2, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE, error = TRUE}
+```{r GOLAZO_A2, include=TRUE,echo=TRUE, eval=FALSE,cache=TRUE, error = TRUE}
 
 L <- matrix(-1,p,p)    
 U <- matrix (1,p,p)
@@ -1425,7 +1662,7 @@ time_GOLAZO_A2_freq.end <- Sys.time()
 
 ## Analysis
 
-```{r GOLAZO_A2_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, error = TRUE}
+```{r GOLAZO_A2_diag, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE, error = TRUE}
 
 beta_GOLAZO_A2_full
 
@@ -1444,7 +1681,7 @@ time_GOLAZO_A2_freq
 
 ## Map Plots
 
-```{r GOLAZO_A2_Map_Plot2, include=TRUE,echo=TRUE, eval = TRUE,cache=FALSE, error = TRUE}
+```{r GOLAZO_A2_Map_Plot2, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE, error = TRUE}
 
 write.csv(- Rho_hat_GOLAZO_A2_full , file = paste("mRho_hat_GOLAZO_A2_full", ".csv", sep = ""))
 
@@ -1457,6 +1694,7 @@ mydf_A2 <- mydf_A2 %>%
   rename_all(~stringr::str_replace(.,"^V",""))    ## remove the prefix of colnames
 
 rownames(mydf_A2) <- sprintf('%s', 0:331)
+colnames(mydf_A2) <- sprintf('%s', 0:331)
 
 mydf_A2 <-data.frame(from =rownames(mydf_A2)[row(mydf_A2)[upper.tri(mydf_A2)]], 
                 to =colnames(mydf_A2)[col(mydf_A2)[upper.tri(mydf_A2)]], 
@@ -1478,37 +1716,34 @@ edges_for_plot_A2 <- edges_A2 %>%
 
 ```
 
-```{r GOLAZO_A2_Map_Plot3, include=TRUE,echo=TRUE, eval = TRUE,cache=FALSE, error = TRUE}
+```{r GOLAZO_A2_Map_Plot3, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE, error = TRUE}
 
 ## plot of GOLAZO_A2
 ##################################
 ## transform nodes and edges
 #nodes_ordered <- nodes[, c(2, 3, 4, 5, 1)]
 nodes_ordered <- nodes_new[, c(2, 3, 1)]
-#nodes_transformed <- usmap_transform(nodes_ordered)
-nodes_transformed <- usmap_transform(nodes_ordered, input_names = c("lon", "lat"), output_names = c("lon.1", "lat.1"))
 
+# Transforming node coordinates using usmap_transform function
+nodes_transformed <- usmap_transform(nodes_ordered, input_names = c("lon", "lat"))
 
-edges_for_plot_A2_ordered <- edges_for_plot_A2[, c(4, 5, 6, 7, 1, 2, 3)]
-edges_for_plot_A2_transformed <- usmap_transform(edges_for_plot_A2_ordered, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
-edges_for_plot_A2_transformed_ordered <- edges_for_plot_A2_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
-edges_for_plot_A2_transformed2 <- usmap_transform(edges_for_plot_A2_transformed_ordered, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+# Transforming edge coordinates using usmap_transform function for both start and end points
+edges_for_plot_A2_transformed <- usmap_transform(edges_for_plot_A2, input_names = c("x", "y"))   %>% arrange(to) %>% arrange(from)
+edges_for_plot_A2_transformed2 <- usmap_transform(edges_for_plot_A2, input_names = c("xend", "yend"))    %>% arrange(to) %>% arrange(from)
+
+# Merging transformed edge coordinates into a single data frame
+merged_data_sf <- cbind(edges_for_plot_A2_transformed, edges_for_plot_A2_transformed2)
+
 
 
 plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
-  ggrepel::geom_label_repel(data = nodes_transformed,
-                            aes(x = lon.1, y = lat.1, label = County1),
-                            size = 3, alpha = 0.8,
-                            label.r = unit(0.5, "lines"), label.size = 0.5,
-                            # segment.color = "red", segment.size = 1,
-                            seed = 1002) +
-  geom_segment(data = edges_for_plot_A2_transformed2, 
-               aes(x = x.1, xend = xend.1,
-                   y = y.1, yend = yend.1),
+  geom_segment(data = merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
                color = "red", size = 0.35, alpha = 0.5) +
-  geom_point(data = nodes_transformed, aes(x = lon.1, y = lat.1),
-             fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
-  labs(title = "Geospatial Network of GOLAZO - A2",
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Facebook Network of GOLAZO - A2",
        subtitle = "The Edges Estimated from GOLAZO - A2 and US Map",
        size = "Magnitude") +
   theme(legend.position = "right")
@@ -1517,35 +1752,29 @@ plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
 
 The size of Li's plots
 
-```{r GOLAZO_A2_Map_Plot3_tikz, include=TRUE,echo=TRUE, eval = TRUE, cache=FALSE, fig.height = 4, fig.width = 7, dev = "tikz", error = TRUE}
+```{r GOLAZO_A2_Map_Plot3_tikz, include=TRUE,echo=TRUE, eval=FALSE, cache=FALSE, fig.height = 4, fig.width = 7, dev = "tikz", error = TRUE}
 
 par(mar = c(3.3, 3.6, 1.5, 1.1))  # bottom, left, top, right
 par(mgp = c(2.15, 1, 0))
 par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
 
 plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
-  #ggrepel::geom_label_repel(data = nodes_transformed,
-  #                          aes(x = lon.1, y = lat.1, label = County1),
-  #                          size = 3, alpha = 0.8,
-  #                          label.r = unit(0.5, "lines"), label.size = 0.5,
-  #                          # segment.color = "red", segment.size = 1,
-  #                          seed = 1002) +
-  geom_point(data = nodes_transformed, aes(x = lon.1, y = lat.1),
-             fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
-  geom_segment(data = edges_for_plot_A2_transformed2, 
-               aes(x = x.1, xend = xend.1,
-                   y = y.1, yend = yend.1),
-               color = "red", size = 0.35, alpha = 0.5) #+
-  #labs(title = "Geospatial Network of GOLAZO - A2",
-  #     subtitle = "The Edges Estimated from GOLAZO - A2 and US Map",
-  #     size = "Magnitude") +
-  #theme(legend.position = "right")
+  geom_segment(data = merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) #+
+#  labs(title = "Facebook Network of GOLAZO - A2",
+#       subtitle = "The Edges Estimated from GOLAZO - A2 and US Map",
+#       size = "Magnitude") +
+#  theme(legend.position = "right")
 
 ```
 
 ### Unique edges A2 (and not GLASSO)
 
-```{r GOLAZO_unique_A2_Map_Plot2, include=TRUE,echo=TRUE, eval = TRUE,cache=FALSE, error = TRUE}
+```{r GOLAZO_unique_A2_Map_Plot2, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE, error = TRUE}
 
 edges_check <- dplyr::select(edges, -corr)
 edges_A2_check <- dplyr::select(edges_A2, -corr)
@@ -1570,40 +1799,39 @@ unique_A2_edges_for_plot <- unique_A2_edges %>%
 
 ```
 
-```{r GOLAZO_unique_A2_Map_Plot3, include=TRUE,echo=TRUE, eval = TRUE,cache=FALSE, error = TRUE}
+```{r GOLAZO_unique_A2_Map_Plot3, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE, error = TRUE}
 
 unique_A2_edges_for_plot <- unique_A2_edges_for_plot[, c(4, 5, 6, 7, 1, 2, 3)]
-unique_A2_transformed <- usmap_transform(unique_A2_edges_for_plot, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
-unique_A2_transformed <- unique_A2_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
-unique_A2_transformed <- usmap_transform(unique_A2_transformed, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
 
-## connections unique in A2
+## NEW ## - below is my attemot at applying the above to Li's code
+
+# Transforming edge coordinates using usmap_transform function for both start and end points
+unique_A2_transformed <- usmap_transform(unique_A2_edges_for_plot, input_names = c("x", "y"))   %>% arrange(to) %>% arrange(from)
+unique_A2_transformed2 <- usmap_transform(unique_A2_edges_for_plot, input_names = c("xend", "yend"))   %>% arrange(to) %>% arrange(from)
+
+# Merging transformed edge coordinates into a single data frame
+unique_A2_merged_data_sf <- cbind(unique_A2_transformed, unique_A2_transformed2)
+
+
+
 plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
-  #ggrepel::geom_label_repel(data = nodes_transformed,
-  #                          aes(x = lon.1, y = lat.1, label = County1),
-  #                          size = 3, alpha = 0.8,
-  #                          label.r = unit(0.5, "lines"), label.size = 0.5
-  #                          , seed = 1002) +
-  geom_point(data = unique_A2_transformed, aes(x = x.1, y = y.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_point(data = unique_A2_transformed, aes(x = xend.1, y = yend.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_segment(data = unique_A2_transformed, 
-               aes(x = x.1, xend = xend.1,
-                   y = y.1, yend = yend.1),
-               color = "blue",size = 0.35, alpha = 0.5) +
+  geom_segment(data = unique_A2_merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
   labs(title = "Edges Unique in GOLAZO-A2",
-       # subtitle = "Lines: red for GOLAZO_A2",
+       subtitle = "The Edges Estimated from GOLAZO - A2 but not GLASSO and US Map",
        size = "Magnitude") +
   theme(legend.position = "right")
+
 
 
 ```
 
 
-```{r GOLAZO_unique_A2_Map_Plot3_tikz, include=TRUE,echo=TRUE, eval = TRUE,cache=FALSE, fig.height = 4, fig.width = 7, dev = "tikz", error = TRUE}
+```{r GOLAZO_unique_A2_Map_Plot3_tikz, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE, fig.height = 4, fig.width = 7, dev = "tikz", error = TRUE}
 
 par(mar = c(3.3, 3.6, 1.5, 1.1))  # bottom, left, top, right
 par(mgp = c(2.15, 1, 0))
@@ -1611,25 +1839,16 @@ par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
 
 ## connections unique in A2
 plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
-  #ggrepel::geom_label_repel(data = nodes_transformed,
-  #                          aes(x = lon.1, y = lat.1, label = County1),
-  #                          size = 3, alpha = 0.8,
-  #                          label.r = unit(0.5, "lines"), label.size = 0.5
-  #                          , seed = 1002) +
-  geom_point(data = unique_A2_transformed, aes(x = x.1, y = y.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_point(data = unique_A2_transformed, aes(x = xend.1, y = yend.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_segment(data = unique_A2_transformed, 
-               aes(x = x.1, xend = xend.1,
-                   y = y.1, yend = yend.1),
-               color = "blue",size = 0.35, alpha = 0.5) #+
-  #labs(title = "Edges Unique in GOLAZO-A2",
-  #     # subtitle = "Lines: red for GOLAZO_A2",
-  #     size = "Magnitude") +
-  #theme(legend.position = "right")
+  geom_segment(data = unique_A2_merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Edges Unique in GOLAZO-A2",
+       subtitle = "The Edges Estimated from GOLAZO - A2 but not GLASSO and US Map",
+       size = "Magnitude") +
+  theme(legend.position = "right")
 
 
 
@@ -1642,7 +1861,7 @@ plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
 
 ## BayesOpt
 
-```{r GOLAZO_A3, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+```{r GOLAZO_A3, include=TRUE,echo=TRUE, eval=FALSE,cache=TRUE}
 
 L <- matrix(-1,p,p)    
 U <- matrix (1,p,p)
@@ -1699,7 +1918,7 @@ time_GOLAZO_A3_freq.end <- Sys.time()
 
 ## Analysis
 
-```{r GOLAZO_A3_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+```{r GOLAZO_A3_diag, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE}
 
 beta_GOLAZO_A3_full
 
@@ -1722,7 +1941,7 @@ time_GOLAZO_A3_freq
 
 Infinite loop? - maybe just write try for the whole thing and adress case by case
 
-```{r GOLAZO_A1A2, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE,  error = TRUE}
+```{r GOLAZO_A1A2, include=TRUE,echo=TRUE, eval=FALSE,cache=TRUE,  error = TRUE}
 
 L <- matrix(-1,p,p)    
 U <- matrix (1,p,p)
@@ -1786,7 +2005,7 @@ time_GOLAZO_A1A2_freq.end <- Sys.time()
 
 ## Analysis
 
-```{r GOLAZO_A1A2_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+```{r GOLAZO_A1A2_diag, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE,  error = TRUE}
 
 beta_GOLAZO_A1A2_full
 
@@ -1805,7 +2024,7 @@ time_GOLAZO_A1A2_freq
 
 ## Map Plots
 
-```{r GOLAZO_A1A2_Map_Plot2, include=TRUE,echo=TRUE, eval = TRUE,cache=FALSE,  error = TRUE}
+```{r GOLAZO_A1A2_Map_Plot2, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE,  error = TRUE}
 
 write.csv(- Rho_hat_GOLAZO_A1A2_full , file = paste("mRho_hat_GOLAZO_A1A2_full", ".csv", sep = ""))
 
@@ -1818,6 +2037,7 @@ mydf_A1A2 <- mydf_A1A2 %>%
   rename_all(~stringr::str_replace(.,"^V",""))    ## remove the prefix of colnames
 
 rownames(mydf_A1A2) <- sprintf('%s', 0:331)
+colnames(mydf_A1A2) <- sprintf('%s', 0:331)
 
 mydf_A1A2 <-data.frame(from =rownames(mydf_A1A2)[row(mydf_A1A2)[upper.tri(mydf_A1A2)]], 
                 to =colnames(mydf_A1A2)[col(mydf_A1A2)[upper.tri(mydf_A1A2)]], 
@@ -1839,37 +2059,35 @@ edges_for_plot_A1A2 <- edges_A1A2 %>%
 
 ```
 
-```{r GOLAZO_A1A2_Map_Plot3, include=TRUE,echo=TRUE, eval = TRUE,cache=FALSE,  error = TRUE}
+```{r GOLAZO_A1A2_Map_Plot3, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE,  error = TRUE}
 
 ## plot of GOLAZO_A1A2
 ##################################
 ## transform nodes and edges
 #nodes_ordered <- nodes[, c(2, 3, 4, 5, 1)]
 nodes_ordered <- nodes_new[, c(2, 3, 1)]
-#nodes_transformed <- usmap_transform(nodes_ordered)
-nodes_transformed <- usmap_transform(nodes_ordered, input_names = c("lon", "lat"), output_names = c("lon.1", "lat.1"))
 
 
-edges_for_plot_A1A2_ordered <- edges_for_plot_A1A2[, c(4, 5, 6, 7, 1, 2, 3)]
-edges_for_plot_A1A2_transformed <- usmap_transform(edges_for_plot_A1A2_ordered, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
-edges_for_plot_A1A2_transformed_ordered <- edges_for_plot_A1A2_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
-edges_for_plot_A1A2_transformed2 <- usmap_transform(edges_for_plot_A1A2_transformed_ordered, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+# Transforming node coordinates using usmap_transform function
+nodes_transformed <- usmap_transform(nodes_ordered, input_names = c("lon", "lat"))
+
+# Transforming edge coordinates using usmap_transform function for both start and end points
+edges_for_plot_A1A2_transformed <- usmap_transform(edges_for_plot_A1A2, input_names = c("x", "y"))   %>% arrange(to) %>% arrange(from)
+edges_for_plot_A1A2_transformed2 <- usmap_transform(edges_for_plot_A1A2, input_names = c("xend", "yend"))   %>% arrange(to) %>% arrange(from)
+
+# Merging transformed edge coordinates into a single data frame
+merged_data_sf <- cbind(edges_for_plot_A1A2_transformed, edges_for_plot_A2A2_transformed2)
+
 
 
 plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
-  #ggrepel::geom_label_repel(data = nodes_transformed,
-  #                          aes(x = lon.1, y = lat.1, label = County1),
-  #                          size = 3, alpha = 0.8,
-  #                          label.r = unit(0.5, "lines"), label.size = 0.5,
-  #                          # segment.color = "red", segment.size = 1,
-  #                          seed = 1002) +
-  geom_segment(data = edges_for_plot_A1A2_transformed2, 
-               aes(x = x.1, xend = xend.1,
-                   y = y.1, yend = yend.1),
+  geom_segment(data = merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
                color = "red", size = 0.35, alpha = 0.5) +
-  geom_point(data = nodes_transformed, aes(x = lon.1, y = lat.1),
-             fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
-  labs(title = "Geospatial Network of GOLAZO - A1 \\& A2",
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Geospatial and Facebook Network of GOLAZO - A1 \\& A2",
        subtitle = "The Edges Estimated from GOLAZO - A1 \\& A2 and US Map",
        size = "Magnitude") +
   theme(legend.position = "right")
@@ -1878,35 +2096,29 @@ plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
 
 The size of Li's plots
 
-```{r GOLAZO_A1A2_Map_Plot3_tikz, include=TRUE,echo=TRUE, eval = TRUE, cache=FALSE, fig.height = 4, fig.width = 7, dev = "tikz",  error = TRUE}
+```{r GOLAZO_A1A2_Map_Plot3_tikz, include=TRUE,echo=TRUE, eval=FALSE, cache=FALSE, fig.height = 4, fig.width = 7, dev = "tikz",  error = TRUE}
 
 par(mar = c(3.3, 3.6, 1.5, 1.1))  # bottom, left, top, right
 par(mgp = c(2.15, 1, 0))
 par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
 
 plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
-  #ggrepel::geom_label_repel(data = nodes_transformed,
-  #                          aes(x = lon.1, y = lat.1, label = County1),
-  #                          size = 3, alpha = 0.8,
-  #                          label.r = unit(0.5, "lines"), label.size = 0.5,
-  #                          # segment.color = "red", segment.size = 1,
-  #                          seed = 1002) +
-  geom_point(data = nodes_transformed, aes(x = lon.1, y = lat.1),
-             fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
-  geom_segment(data = edges_for_plot_A1A2_transformed2, 
-               aes(x = x.1, xend = xend.1,
-                   y = y.1, yend = yend.1),
-               color = "red", size = 0.35, alpha = 0.5) #+
-  #labs(title = "Geospatial Network of GOLAZO - A1 \\& A2",
-  #     subtitle = "The Edges Estimated from GOLAZO - A1 \\& A2 and US Map",
-  #     size = "Magnitude") +
-  #theme(legend.position = "right")
+  geom_segment(data = merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) #+
+#  labs(title = "Geospatial and Facebook Network of GOLAZO - A1 \\& A2",
+#       subtitle = "The Edges Estimated from GOLAZO - A1 \\& A2 and US Map",
+#       size = "Magnitude") +
+#  theme(legend.position = "right")
 
 ```
 
 ### Unique edges A1
 
-```{r GOLAZO_unique_A1A2_Map_Plot2, include=TRUE,echo=TRUE, eval = TRUE,cache=FALSE,  error = TRUE}
+```{r GOLAZO_unique_A1A2_Map_Plot2, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE,  error = TRUE}
 
 edges_A1_check <- dplyr::select(edges_A1, -corr)
 edges_A2_check <- dplyr::select(edges_A2, -corr)
@@ -1944,71 +2156,56 @@ unique_A2_edges_for_plot <- unique_A2_edges %>%
 
 ```
 
-```{r GOLAZO_unique_A1A2_Map_Plot3, include=TRUE,echo=TRUE, eval = TRUE,cache=FALSE}
+```{r GOLAZO_unique_A1A2_Map_Plot3, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE}
 
 unique_A1_edges_for_plot <- unique_A1_edges_for_plot[, c(4, 5, 6, 7, 1, 2, 3)]
-unique_A1_transformed <- usmap_transform(unique_A1_edges_for_plot, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
-unique_A1_transformed <- unique_A1_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
-unique_A1_transformed <- usmap_transform(unique_A1_transformed, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
 
-unique_A2_edges_for_plot <- unique_A2_edges_for_plot[, c(4, 5, 6, 7, 1, 2, 3)]
-unique_A2_transformed <- usmap_transform(unique_A2_edges_for_plot, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
-unique_A2_transformed <- unique_A2_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
-unique_A2_transformed <- usmap_transform(unique_A2_transformed, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+## NEW ## - below is my attemot at applying the above to Li's code
 
-## connections unique in A1
+# Transforming edge coordinates using usmap_transform function for both start and end points
+unique_A1_transformed <- usmap_transform(unique_A1_edges_for_plot, input_names = c("x", "y"))   %>% arrange(to) %>% arrange(from)
+unique_A1_transformed2 <- usmap_transform(unique_A1_edges_for_plot, input_names = c("xend", "yend"))   %>% arrange(to) %>% arrange(from)
+
+# Merging transformed edge coordinates into a single data frame
+unique_A1_merged_data_sf <- cbind(unique_A1_transformed, unique_A1_transformed2)
+
+
+
 plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
-  #ggrepel::geom_label_repel(data = nodes_transformed,
-  #                          aes(x = lon.1, y = lat.1, label = County1),
-  #                          size = 3, alpha = 0.8,
-  #                          label.r = unit(0.5, "lines"), label.size = 0.5
-  #                          , seed = 1002) +
-  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_point(data = unique_A2_transformed, aes(x = x.1, y = y.1),  
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_point(data = unique_A2_transformed, aes(x = xend.1, y = yend.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_segment(data = unique_A1_transformed, 
-               aes(x = x.1, xend = xend.1,
-                   y = y.1, yend = yend.1),
-               color = "red",size = 0.35, alpha = 0.5) +
+  geom_segment(data = unique_A1_merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
   labs(title = "Edges Unique in GOLAZO-A1",
        # subtitle = "Lines: red for GOLAZO_A1",
        size = "Magnitude") +
   theme(legend.position = "right")
 
 
-## connections unique in A2
+
+
+unique_A2_edges_for_plot <- unique_A2_edges_for_plot[, c(4, 5, 6, 7, 1, 2, 3)]
+
+## NEW ## - below is my attemot at applying the above to Li's code
+
+# Transforming edge coordinates using usmap_transform function for both start and end points
+unique_A2_transformed <- usmap_transform(unique_A2_edges_for_plot, input_names = c("x", "y"))   %>% arrange(to) %>% arrange(from)
+unique_A2_transformed2 <- usmap_transform(unique_A2_edges_for_plot, input_names = c("xend", "yend"))  %>% arrange(to) %>% arrange(from)
+
+# Merging transformed edge coordinates into a single data frame
+unique_A2_merged_data_sf <- cbind(unique_A2_transformed, unique_A2_transformed2)
+
+
+
 plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
-  #ggrepel::geom_label_repel(data = nodes_transformed,
-  #                          aes(x = lon.1, y = lat.1, label = County1),
-  #                          size = 3, alpha = 0.8,
-  #                          label.r = unit(0.5, "lines"), label.size = 0.5,
-  #                          # segment.color = "grey", segment.size = 1,
-  #                          seed = 1002) +
-  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_point(data = unique_A2_transformed, aes(x = x.1, y = y.1),  
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_point(data = unique_A2_transformed, aes(x = xend.1, y = yend.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_segment(data = unique_A2_transformed, 
-               aes(x = x.1, xend = xend.1,
-                   y = y.1, yend = yend.1),
-               color = "blue",size = 0.35, alpha = 0.5) +
+  geom_segment(data = unique_A2_merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
   labs(title = "Edges Unique in GOLAZO-A2",
        # subtitle = "Lines: blue for GOLAZO_A2",
        size = "Magnitude") +
@@ -2019,7 +2216,7 @@ plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
 ```
 
 
-```{r GOLAZO_unique_A1A2_Map_Plot3_tikz, include=TRUE,echo=TRUE, eval = TRUE,cache=FALSE, fig.height = 4, fig.width = 7, dev = "tikz",  error = TRUE}
+```{r GOLAZO_unique_A1A2_Map_Plot3_tikz, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE, fig.height = 4, fig.width = 7, dev = "tikz",  error = TRUE}
 
 par(mar = c(3.3, 3.6, 1.5, 1.1))  # bottom, left, top, right
 par(mgp = c(2.15, 1, 0))
@@ -2027,61 +2224,30 @@ par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
 
 ## connections unique in A1
 plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
-  #ggrepel::geom_label_repel(data = nodes_transformed,
-  #                          aes(x = lon.1, y = lat.1, label = County1),
-  #                          size = 3, alpha = 0.8,
-  #                          label.r = unit(0.5, "lines"), label.size = 0.5
-  #                          , seed = 1002) +
-  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_point(data = unique_A2_transformed, aes(x = x.1, y = y.1),  
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_point(data = unique_A2_transformed, aes(x = xend.1, y = yend.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_segment(data = unique_A1_transformed, 
-               aes(x = x.1, xend = xend.1,
-                   y = y.1, yend = yend.1),
-               color = "red",size = 0.35, alpha = 0.5) #+
-  #labs(title = "Edges Unique in GOLAZO-A1",
-  #     # subtitle = "Lines: red for GOLAZO_A1",
-  #     size = "Magnitude") +
-  #theme(legend.position = "right")
+  geom_segment(data = unique_A1_merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Edges Unique in GOLAZO-A1",
+       # subtitle = "Lines: red for GOLAZO_A1",
+       size = "Magnitude") +
+  theme(legend.position = "right")
 
 
 ## connections unique in A2
 plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
-  #ggrepel::geom_label_repel(data = nodes_transformed,
-  #                          aes(x = lon.1, y = lat.1, label = County1),
-  #                          size = 3, alpha = 0.8,
-  #                          label.r = unit(0.5, "lines"), label.size = 0.5,
-  #                          # segment.color = "grey", segment.size = 1,
-  #                          seed = 1002) +
-  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_point(data = unique_A2_transformed, aes(x = x.1, y = y.1),  
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_point(data = unique_A2_transformed, aes(x = xend.1, y = yend.1),    
-             shape = 16, color = 'orangered3',
-             stroke = 1) +
-  geom_segment(data = unique_A2_transformed, 
-               aes(x = x.1, xend = xend.1,
-                   y = y.1, yend = yend.1),
-               color = "blue",size = 0.35, alpha = 0.5) #+
-  #labs(title = "Edges Unique in GOLAZO-A2",
-  #     # subtitle = "Lines: blue for GOLAZO_A2",
-  #     size = "Magnitude") +
-  #theme(legend.position = "right")
+  geom_segment(data = unique_A2_merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Edges Unique in GOLAZO-A2",
+       # subtitle = "Lines: blue for GOLAZO_A2",
+       size = "Magnitude") +
+  theme(legend.position = "right")
 
 
 
@@ -2093,7 +2259,7 @@ plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
 
 ## Inference
 
-```{r GOLAZO_A1A3, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE,  error = TRUE}
+```{r GOLAZO_A1A3, include=TRUE,echo=TRUE, eval=FALSE,cache=TRUE,  error = TRUE}
 
 L <- matrix(-1,p,p)    
 U <- matrix (1,p,p)
@@ -2156,7 +2322,7 @@ time_GOLAZO_A1A3_freq.end <- Sys.time()
 
 ## Analysis
 
-```{r GOLAZO_A1A3_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+```{r GOLAZO_A1A3_diag, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE,  error = TRUE}
 
 beta_GOLAZO_A1A3_full
 
@@ -2176,7 +2342,7 @@ time_GOLAZO_A1A3_freq
 
 ## Inference
 
-```{r GOLAZO_A2A3, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE,  error = TRUE}
+```{r GOLAZO_A2A3, include=TRUE,echo=TRUE, eval=FALSE,cache=TRUE,  error = TRUE}
 
 L <- matrix(-1,p,p)    
 U <- matrix (1,p,p)
@@ -2238,7 +2404,7 @@ time_GOLAZO_A2A3_freq.end <- Sys.time()
 
 ## Analysis
 
-```{r GOLAZO_A2A3_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+```{r GOLAZO_A2A3_diag, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE,  error = TRUE}
 
 beta_GOLAZO_A2A3_full
 
@@ -2258,7 +2424,7 @@ time_GOLAZO_A2A3_freq
 
 ## Inference
 
-```{r GOLAZO_A1A2A3, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE,  error = TRUE}
+```{r GOLAZO_A1A2A3, include=TRUE,echo=TRUE, eval=FALSE,cache=TRUE,  error = TRUE}
 
 L <- matrix(-1,p,p)    
 U <- matrix (1,p,p)
@@ -2326,7 +2492,7 @@ time_GOLAZO_A1A2A3_freq.end <- Sys.time()
 
 ## Analysis
 
-```{r GOLAZO_A1A2A3_diag, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+```{r GOLAZO_A1A2A3_diag, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE,  error = TRUE}
 
 beta_GOLAZO_A1A2A3_full
 
@@ -2345,7 +2511,7 @@ time_GOLAZO_A1A2A3_freq
 
 # Full Comparison {.tabset}
 
-```{r full_comparison, include=TRUE,echo=TRUE, eval = TRUE, cache=FALSE,  error = TRUE}
+```{r full_comparison, include=TRUE,echo=TRUE, eval=FALSE, cache=FALSE,  error = TRUE}
 
 ebic_eval_optim_GLASSO
 ebic_eval_optim_GOLAZO_A1_full
@@ -2463,7 +2629,7 @@ kable(table_frame_freq)
 ## Hyparameters
 
 
-```{r hyperparameters_0.5, include=TRUE,echo=TRUE, eval = TRUE, cache=TRUE, error = TRUE}
+```{r hyperparameters_0.5, include=TRUE,echo=TRUE, eval=FALSE, cache=TRUE, error = TRUE}
 
 ebic.gamma <- 0.5           # set to zero to get BIC
 edge.tol <-  1e-6         # be consistent with GLASSO+EBIC method
@@ -2474,7 +2640,7 @@ edge.tol <-  1e-6         # be consistent with GLASSO+EBIC method
 
 ## Inference
 
-```{r GLASSO_run_0.5, include=TRUE,echo=TRUE, eval=TRUE, cache=TRUE, error = TRUE}
+```{r GLASSO_run_0.5, include=TRUE,echo=TRUE, eval=FALSE, cache=TRUE, error = TRUE}
 
 L <- matrix(-1,p,p)    
 U <- matrix (1,p,p)
@@ -2526,7 +2692,7 @@ time_GLASSO_freq.end <- Sys.time()
 
 ## Analysis
 
-```{r GLASSO_diag_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, error = TRUE}
+```{r GLASSO_diag_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE, error = TRUE}
 
 beta0_GLASSO # -3.690654  # -1.631706
 
@@ -2551,7 +2717,7 @@ time_GLASSO_freq
 
 ## Geodist (A1)
 
-```{r Theta_vs_A1_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE, error = TRUE}
+```{r Theta_vs_A1_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=TRUE, error = TRUE}
 
 A1 <- as.matrix(geodist1)
 A1 <- 1/log(A1) 
@@ -2562,7 +2728,7 @@ diag(A1) <- 0
 
 ## Facebook (A2)
 
-```{r Theta_vs_A2_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE, error = TRUE}
+```{r Theta_vs_A2_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=TRUE, error = TRUE}
 
 A2 <- as.matrix(SCI_index1)
 A2 <- log(A2)
@@ -2574,7 +2740,7 @@ diag(A2) <- 0
 
 ## Geodist (A3)
 
-```{r Theta_vs_A3_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE, error = TRUE}
+```{r Theta_vs_A3_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=TRUE, error = TRUE}
 
 A3 <- as.matrix(Flights1)
 A3 <- log(A3+1) ## necessary - more flights = more connected  
@@ -2592,7 +2758,7 @@ diag(A32) <- 0
 
 ## Inference
 
-```{r GOLAZO_A1_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE, error = TRUE}
+```{r GOLAZO_A1_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=TRUE, error = TRUE}
 
 L <- matrix(-1,p,p)    
 U <- matrix (1,p,p)
@@ -2656,7 +2822,7 @@ time_GOLAZO_A1_freq.end <- Sys.time()
 
 ## Analysis
 
-```{r GOLAZO_A1_diag_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, error = TRUE}
+```{r GOLAZO_A1_diag_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE, error = TRUE}
 
 beta_GOLAZO_A1_full
 
@@ -2677,7 +2843,7 @@ time_GOLAZO_A1_freq
 
 ## Inference
 
-```{r GOLAZO_A2_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE, error = TRUE}
+```{r GOLAZO_A2_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=TRUE, error = TRUE}
 
 L <- matrix(-1,p,p)    
 U <- matrix (1,p,p)
@@ -2739,7 +2905,7 @@ time_GOLAZO_A2_freq.end <- Sys.time()
 
 ## Analysis
 
-```{r GOLAZO_A2_diag_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, error = TRUE}
+```{r GOLAZO_A2_diag_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE, error = TRUE}
 
 beta_GOLAZO_A2_full
 
@@ -2759,7 +2925,7 @@ time_GOLAZO_A2_freq
 
 ## BayesOpt
 
-```{r GOLAZO_A3_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE}
+```{r GOLAZO_A3_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=TRUE}
 
 L <- matrix(-1,p,p)    
 U <- matrix (1,p,p)
@@ -2820,7 +2986,7 @@ time_GOLAZO_A3_freq.end <- Sys.time()
 
 ## Analysis
 
-```{r GOLAZO_A3_diag_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+```{r GOLAZO_A3_diag_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE}
 
 beta_GOLAZO_A3_full
 
@@ -2844,7 +3010,7 @@ time_GOLAZO_A3_freq
 
 Infinite loop? - maybe just write try for the whole thing and adress case by case
 
-```{r GOLAZO_A1A2_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE,  error = TRUE}
+```{r GOLAZO_A1A2_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=TRUE,  error = TRUE}
 
 L <- matrix(-1,p,p)    
 U <- matrix (1,p,p)
@@ -2912,7 +3078,7 @@ time_GOLAZO_A1A2_freq.end <- Sys.time()
 
 ## Analysis
 
-```{r GOLAZO_A1A2_diag_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+```{r GOLAZO_A1A2_diag_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE,  error = TRUE}
 
 beta_GOLAZO_A1A2_full
 
@@ -2932,7 +3098,7 @@ time_GOLAZO_A1A2_freq
 
 ## Inference
 
-```{r GOLAZO_A1A3_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE,  error = TRUE}
+```{r GOLAZO_A1A3_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=TRUE,  error = TRUE}
 
 L <- matrix(-1,p,p)    
 U <- matrix (1,p,p)
@@ -2995,7 +3161,7 @@ time_GOLAZO_A1A3_freq.end <- Sys.time()
 
 ## Analysis
 
-```{r GOLAZO_A1A3_diag_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+```{r GOLAZO_A1A3_diag_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE,  error = TRUE}
 
 beta_GOLAZO_A1A3_full
 
@@ -3015,7 +3181,7 @@ time_GOLAZO_A1A3_freq
 
 ## Inference
 
-```{r GOLAZO_A2A3_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE,  error = TRUE}
+```{r GOLAZO_A2A3_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=TRUE,  error = TRUE}
 
 L <- matrix(-1,p,p)    
 U <- matrix (1,p,p)
@@ -3079,7 +3245,7 @@ time_GOLAZO_A2A3_freq.end <- Sys.time()
 
 ## Analysis
 
-```{r GOLAZO_A2A3_diag_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+```{r GOLAZO_A2A3_diag_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE,  error = TRUE}
 
 beta_GOLAZO_A2A3_full
 
@@ -3099,7 +3265,7 @@ time_GOLAZO_A2A3_freq
 
 ## Inference
 
-```{r GOLAZO_A1A2A3_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=TRUE,  error = TRUE}
+```{r GOLAZO_A1A2A3_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=TRUE,  error = TRUE}
 
 L <- matrix(-1,p,p)    
 U <- matrix (1,p,p)
@@ -3167,7 +3333,7 @@ time_GOLAZO_A1A2A3_freq.end <- Sys.time()
 
 ## Analysis
 
-```{r GOLAZO_A1A2A3_diag_0.5, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE,  error = TRUE}
+```{r GOLAZO_A1A2A3_diag_0.5, include=TRUE,echo=TRUE, eval=FALSE,cache=FALSE,  error = TRUE}
 
 beta_GOLAZO_A1A2A3_full
 
@@ -3186,7 +3352,7 @@ time_GOLAZO_A1A2A3_freq
 
 # Full Comparison {.tabset}
 
-```{r full_comparison_0.5, include=TRUE,echo=TRUE, eval = TRUE, cache=FALSE,  error = TRUE}
+```{r full_comparison_0.5, include=TRUE,echo=TRUE, eval=FALSE, cache=FALSE,  error = TRUE}
 
 ebic_eval_optim_GLASSO
 ebic_eval_optim_GOLAZO_A1_full
@@ -3293,3 +3459,932 @@ xtable(table_frame_freq, digits=3)
 kable(table_frame_freq)
 
 ```
+
+
+### US MAPS from Final Bayesian Model
+
+Remember we had errors with the second MCMC 
+
+```{r NetworkSS_Map_Plot, include=TRUE,echo=TRUE, eval=TRUE, cache=FALSE}
+
+setwd(data_dir)
+
+#covid_nonzero_preds_50_mat <- read_csv("covid_nonzero_preds_50_mat.csv")[,-1]
+#covid_nonzero_preds_95_mat <- read_csv("covid_nonzero_preds_95_mat.csv")[,-1]
+#covid_nonzero_preds_50_mat_regression <- read_csv("nonzero_preds_50_mat_regression.csv")[,-1]
+#covid_nonzero_preds_95_mat_regression <- read_csv("nonzero_preds_95_mat_regression.csv")[,-1]
+
+#sum(covid_nonzero_preds_95_mat)
+#sum(covid_nonzero_preds_95_mat_regression)
+
+#sum(covid_nonzero_preds_95_mat*covid_nonzero_preds_95_mat_regression)
+
+#sum(covid_nonzero_preds_50_mat)
+#sum(covid_nonzero_preds_50_mat_regression)
+
+#sum(covid_nonzero_preds_50_mat*covid_nonzero_preds_50_mat_regression)
+
+covid_nonzero_preds_50_mat_regression <- read_csv("nonzero_preds_50_mat_seed_6_9.csv")[,-1]
+covid_nonzero_preds_95_mat_regression <- read_csv("nonzero_preds_95_mat_seed_6_9.csv")[,-1]
+
+sum(covid_nonzero_preds_50_mat_regression)
+sum(covid_nonzero_preds_95_mat_regression)
+```
+*RUN CHUNK ON LINE 465 FIRST*
+
+
+```{r NetworkSS_Map_Plot2_50, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+
+# ## edges connection for GLASSO
+#par_corr_GLASSO <- read_csv("mRho_hat_GLASSO.csv")[, -1] 
+#par_corr_GLASSO <- covid_nonzero_preds_95_mat 
+par_corr_GLASSO <- covid_nonzero_preds_50_mat_regression
+m1 <- par_corr_GLASSO
+
+
+#ERROR
+colnames(m1)## one is index from 0 and 1 from 1
+rownames(m1)
+colnames(m1) <- paste0(0:(p-1)) #IMPORTANT
+rownames(m1) <- paste0(0:(p-1)) #IMPORTANT
+
+#m1 <-data.frame(from =rownames(m1)[row(m1)[upper.tri(m1)]], 
+#                to =colnames(m1)[col(m1)[upper.tri(m1)]], 
+#                corr=m1[upper.tri(m1)])            ## convert partial correlation matrix to column
+m1 <-data.frame(from =colnames(m1)[col(m1)[lower.tri(m1)]], 
+                to =rownames(m1)[row(m1)[lower.tri(m1)]], 
+                corr=m1[lower.tri(m1)])            ## convert partial correlation matrix to column
+
+edges_NetworkSS_50 <- m1[m1$corr != 0, ]      ## only keep those rows that corr != 0
+
+
+edges_NetworkSS_50 <- edges_NetworkSS_50 %>%  
+  mutate(from = as.numeric(from), to = as.numeric(to))   ##convert the type to be consistant with "nodes"
+
+edges_for_plot <- edges_NetworkSS_50 %>%
+  inner_join(nodes_new %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  rename(x = lon, y = lat) %>%
+  inner_join(nodes_new %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  rename(xend = lon, yend = lat)           ## define the start(from(x,y)) and end(to(xend,yend)) point for each edges
+
+```
+
+```{r NetworkSS_Map_Plot3_50, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## plot of GLASSO
+##################################
+## transform nodes and edges
+#nodes_ordered <- nodes[, c(2, 3, 4, 5, 1)]
+nodes_ordered <- nodes_new[, c(2, 3, 1)]
+
+
+# Transforming node coordinates using usmap_transform function
+nodes_transformed <- usmap_transform(nodes_ordered, input_names = c("lon", "lat"))
+
+# Transforming edge coordinates using usmap_transform function for both start and end points
+edges_for_plot_transformed <- usmap_transform(edges_for_plot, input_names = c("x", "y"))   %>% arrange(to) %>% arrange(from)
+edges_for_plot_transformed2 <- usmap_transform(edges_for_plot, input_names = c("xend", "yend"))  %>% arrange(to) %>% arrange(from)
+
+# Merging transformed edge coordinates into a single data frame
+merged_data_sf <- cbind(edges_for_plot_transformed, edges_for_plot_transformed2)
+
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  geom_segment(data = merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Geospatial Network of Spike-and-Slab",
+       subtitle = "The Edges Estimated from Network-SS (0.5) and US Map",
+       size = "Magnitude") +
+  theme(legend.position = "right", plot.margin = unit(c(0.25,0,0,0), "cm"))
+#top, right, bottom, left
+
+
+```
+
+```{r NetworkSS_Map_Plot3_50_tikz, include=TRUE,echo=TRUE, eval=TRUE, cache=FALSE, fig.height = 4, fig.width = 7, dev = "tikz"}
+
+#par(mar = c(3.3, 3.6, 1.5, 1.1))  # bottom, left, top, right
+par(mar = c(0.25, 3.6, 1.5, 1.1))  # bottom, left, top, right
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  geom_segment(data = merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) #+
+  #labs(title = "Geospatial Network of Spike-and-Slab",
+  #     subtitle = "The Edges Estimated from Network-SS (0.5) and US Map",
+  #     size = "Magnitude") +
+  #theme(legend.position = "right", plot.margin = unit(c(0.25,0,0,0), "cm"))
+#top, right, bottom, left
+
+```
+
+```{r NetworkSS_Map_Plot2_95, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+# ## edges connection for GLASSO
+#par_corr_GLASSO <- read_csv("mRho_hat_GLASSO.csv")[, -1] 
+par_corr_GLASSO <- covid_nonzero_preds_95_mat_regression 
+m1 <- par_corr_GLASSO
+
+colnames(m1) <- paste0(0:(p-1)) #IMPORTANT
+rownames(m1) <- paste0(0:(p-1)) #IMPORTANT
+
+#m1 <-data.frame(from =rownames(m1)[row(m1)[upper.tri(m1)]], 
+#                to =colnames(m1)[col(m1)[upper.tri(m1)]], 
+#                corr=m1[upper.tri(m1)])            ## convert partial correlation matrix to column
+m1 <-data.frame(from =colnames(m1)[col(m1)[lower.tri(m1)]], 
+                to =rownames(m1)[row(m1)[lower.tri(m1)]], 
+                corr=m1[lower.tri(m1)])            ## convert partial correlation matrix to column
+
+edges_NetworkSS_95 <- m1[m1$corr != 0, ]      ## only keep those rows that corr != 0
+
+
+edges_NetworkSS_95 <- edges_NetworkSS_95 %>%  
+  mutate(from = as.numeric(from), to = as.numeric(to))   ##convert the type to be consistant with "nodes"
+
+edges_for_plot <- edges_NetworkSS_95 %>%
+  inner_join(nodes_new %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  rename(x = lon, y = lat) %>%
+  inner_join(nodes_new %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  rename(xend = lon, yend = lat)           ## define the start(from(x,y)) and end(to(xend,yend)) point for each edges
+
+```
+
+```{r NetworkSS_Map_Plot3_95, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## plot of GLASSO
+##################################
+## transform nodes and edges
+#nodes_ordered <- nodes[, c(2, 3, 4, 5, 1)]
+nodes_ordered <- nodes_new[, c(2, 3, 1)]
+
+# Transforming node coordinates using usmap_transform function
+nodes_transformed <- usmap_transform(nodes_ordered, input_names = c("lon", "lat"))
+
+# Transforming edge coordinates using usmap_transform function for both start and end points
+edges_for_plot_transformed <- usmap_transform(edges_for_plot, input_names = c("x", "y"))   %>% arrange(to) %>% arrange(from)
+edges_for_plot_transformed2 <- usmap_transform(edges_for_plot, input_names = c("xend", "yend"))  %>% arrange(to) %>% arrange(from)
+
+# Merging transformed edge coordinates into a single data frame
+merged_data_sf <- cbind(edges_for_plot_transformed, edges_for_plot_transformed2)
+
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  geom_segment(data = merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Geospatial Network of Spike-and-Slab",
+       subtitle = "The Edges Estimated from Network-SS (0.95) and US Map",
+       size = "Magnitude") +
+  theme(legend.position = "right", plot.margin = unit(c(0.25,0,0,0), "cm"))
+#top, right, bottom, left
+```
+
+```{r NetworkSS_Map_Plot3_95_tikz, include=TRUE,echo=TRUE, eval=TRUE, cache=FALSE, fig.height = 4, fig.width = 7, dev = "tikz"}
+
+#par(mar = c(3.3, 3.6, 1.5, 1.1))  # bottom, left, top, right
+par(mar = c(0.25, 3.6, 1.5, 1.1))  # bottom, left, top, right
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  geom_segment(data = merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) #+
+  #labs(title = "Geospatial Network of Spike-and-Slab",
+  #     subtitle = "The Edges Estimated from Network-SS (0.95) and US Map",
+  #     size = "Magnitude") +
+  #theme(legend.position = "right", plot.margin = unit(c(0.25,0,0,0), "cm"))
+#top, right, bottom, left
+
+```
+
+### No Network edges
+
+```{r SS_Map_Plot, include=TRUE,echo=TRUE, eval=TRUE, cache=FALSE}
+
+setwd(data_dir)
+
+covid_nonzero_preds_50_mat_nonetwork_regression <- read_csv("nonzero_preds_50_mat_nonetworks_seed9.csv")[,-1]
+covid_nonzero_preds_95_mat_nonetwork_regression <- read_csv("nonzero_preds_95_mat_nonetworks_seed9.csv")[,-1]
+
+sum(covid_nonzero_preds_50_mat_nonetwork_regression)
+sum(covid_nonzero_preds_95_mat_nonetwork_regression)
+
+sum(covid_nonzero_preds_50_mat_regression)
+sum(covid_nonzero_preds_95_mat_regression)
+
+
+sum(covid_nonzero_preds_50_mat_regression*covid_nonzero_preds_50_mat_nonetwork_regression)
+sum(covid_nonzero_preds_95_mat_regression*covid_nonzero_preds_95_mat_nonetwork_regression)
+
+```
+
+
+```{r SS_Map_Plot2_50, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+
+# ## edges connection for GLASSO
+#par_corr_GLASSO <- read_csv("mRho_hat_GLASSO.csv")[, -1] 
+#par_corr_GLASSO <- covid_nonzero_preds_95_mat 
+par_corr_GLASSO <- covid_nonzero_preds_50_mat_nonetwork_regression
+m1 <- par_corr_GLASSO
+
+colnames(m1) <- paste0(0:(p-1)) #IMPORTANT
+rownames(m1) <- paste0(0:(p-1)) #IMPORTANT
+
+#m1 <-data.frame(from =rownames(m1)[row(m1)[upper.tri(m1)]], 
+#                to =colnames(m1)[col(m1)[upper.tri(m1)]], 
+#                corr=m1[upper.tri(m1)])            ## convert partial correlation matrix to column
+m1 <-data.frame(from =colnames(m1)[col(m1)[lower.tri(m1)]], 
+                to =rownames(m1)[row(m1)[lower.tri(m1)]], 
+                corr=m1[lower.tri(m1)])            ## convert partial correlation matrix to column
+
+edges_SS_50 <- m1[m1$corr != 0, ]      ## only keep those rows that corr != 0
+
+
+edges_SS_50 <- edges_SS_50 %>%  
+  mutate(from = as.numeric(from), to = as.numeric(to))   ##convert the type to be consistant with "nodes"
+
+edges_for_plot <- edges_SS_50 %>%
+  inner_join(nodes_new %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  rename(x = lon, y = lat) %>%
+  inner_join(nodes_new %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  rename(xend = lon, yend = lat)           ## define the start(from(x,y)) and end(to(xend,yend)) point for each edges
+
+```
+
+```{r SS_Map_Plot3_50, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## plot of GLASSO
+##################################
+## transform nodes and edges
+#nodes_ordered <- nodes[, c(2, 3, 4, 5, 1)]
+nodes_ordered <- nodes_new[, c(2, 3, 1)]
+
+
+# Transforming node coordinates using usmap_transform function
+nodes_transformed <- usmap_transform(nodes_ordered, input_names = c("lon", "lat"))
+
+# Transforming edge coordinates using usmap_transform function for both start and end points
+edges_for_plot_transformed <- usmap_transform(edges_for_plot, input_names = c("x", "y"))  %>% arrange(to) %>% arrange(from)
+edges_for_plot_transformed2 <- usmap_transform(edges_for_plot, input_names = c("xend", "yend"))  %>% arrange(to) %>% arrange(from)
+
+# Merging transformed edge coordinates into a single data frame
+merged_data_sf <- cbind(edges_for_plot_transformed, edges_for_plot_transformed2)
+
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  geom_segment(data = merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Geospatial Network of Spike-and-Slab",
+       subtitle = "The Edges Estimated from SS (0.5) and US Map",
+       size = "Magnitude") +
+  theme(legend.position = "right", plot.margin = unit(c(0.25,0,0,0), "cm"))
+#top, right, bottom, left
+
+
+```
+
+```{r SS_Map_Plot3_50_tikz, include=TRUE,echo=TRUE, eval=TRUE, cache=FALSE, fig.height = 4, fig.width = 7, dev = "tikz"}
+
+#par(mar = c(3.3, 3.6, 1.5, 1.1))  # bottom, left, top, right
+par(mar = c(0.25, 3.6, 1.5, 1.1))  # bottom, left, top, right
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  geom_segment(data = merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) #+
+  #labs(title = "Geospatial Network of Spike-and-Slab",
+  #     subtitle = "The Edges Estimated from SS (0.5) and US Map",
+  #     size = "Magnitude") +
+  #theme(legend.position = "right", plot.margin = unit(c(0.25,0,0,0), "cm"))
+#top, right, bottom, left
+
+```
+
+```{r SS_Map_Plot2_95, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+# ## edges connection for GLASSO
+#par_corr_GLASSO <- read_csv("mRho_hat_GLASSO.csv")[, -1] 
+par_corr_GLASSO <- covid_nonzero_preds_95_mat_nonetwork_regression 
+m1 <- par_corr_GLASSO
+
+colnames(m1) <- paste0(0:(p-1)) #IMPORTANT
+rownames(m1) <- paste0(0:(p-1)) #IMPORTANT
+
+#m1 <-data.frame(from =rownames(m1)[row(m1)[upper.tri(m1)]], 
+#                to =colnames(m1)[col(m1)[upper.tri(m1)]], 
+#                corr=m1[upper.tri(m1)])            ## convert partial correlation matrix to column
+m1 <-data.frame(from =colnames(m1)[col(m1)[lower.tri(m1)]], 
+                to =rownames(m1)[row(m1)[lower.tri(m1)]], 
+                corr=m1[lower.tri(m1)])            ## convert partial correlation matrix to column
+
+edges_SS_95 <- m1[m1$corr != 0, ]      ## only keep those rows that corr != 0
+
+
+edges_SS_95 <- edges_SS_95 %>%  
+  mutate(from = as.numeric(from), to = as.numeric(to))   ##convert the type to be consistant with "nodes"
+
+edges_for_plot <- edges_SS_95 %>%
+  inner_join(nodes_new %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  rename(x = lon, y = lat) %>%
+  inner_join(nodes_new %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  rename(xend = lon, yend = lat)           ## define the start(from(x,y)) and end(to(xend,yend)) point for each edges
+
+```
+
+```{r SS_Map_Plot3_95, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## plot of GLASSO
+##################################
+## transform nodes and edges
+#nodes_ordered <- nodes[, c(2, 3, 4, 5, 1)]
+nodes_ordered <- nodes_new[, c(2, 3, 1)]
+
+# Transforming node coordinates using usmap_transform function
+nodes_transformed <- usmap_transform(nodes_ordered, input_names = c("lon", "lat"))
+
+# Transforming edge coordinates using usmap_transform function for both start and end points
+edges_for_plot_transformed <- usmap_transform(edges_for_plot, input_names = c("x", "y"))  %>% arrange(to) %>% arrange(from)
+edges_for_plot_transformed2 <- usmap_transform(edges_for_plot, input_names = c("xend", "yend"))  %>% arrange(to) %>% arrange(from)
+
+# Merging transformed edge coordinates into a single data frame
+merged_data_sf <- cbind(edges_for_plot_transformed, edges_for_plot_transformed2)
+
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  geom_segment(data = merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Geospatial Network of Spike-and-Slab",
+       subtitle = "The Edges Estimated from SS (0.95) and US Map",
+       size = "Magnitude") +
+  theme(legend.position = "right", plot.margin = unit(c(0.25,0,0,0), "cm"))
+#top, right, bottom, left
+```
+
+```{r SS_Map_Plot3_95_tikz, include=TRUE,echo=TRUE, eval=TRUE, cache=FALSE, fig.height = 4, fig.width = 7, dev = "tikz"}
+
+#par(mar = c(3.3, 3.6, 1.5, 1.1))  # bottom, left, top, right
+par(mar = c(0.25, 3.6, 1.5, 1.1))  # bottom, left, top, right
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  geom_segment(data = merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) #+
+  #labs(title = "Geospatial Network of Spike-and-Slab",
+  #     subtitle = "The Edges Estimated from SS (0.95) and US Map",
+  #     size = "Magnitude") +
+  #theme(legend.position = "right", plot.margin = unit(c(0.25,0,0,0), "cm"))
+#top, right, bottom, left
+
+```
+
+### US MAPS Final Bayesian Model - edges added by Network-SS that didn't exist under SS 
+
+Need to extrac nodes that were capture by network SS but not by SS
+
+### Unique edges A1 (and not GLASSO)
+
+```{r NetworkSS_unique_Map_Plot2_50, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+edges_SS_50_check <- dplyr::select(edges_SS_50, -corr)
+edges_NetworkSS_50_check <- dplyr::select(edges_NetworkSS_50, -corr)
+
+
+unique_Network <- dplyr::setdiff(edges_NetworkSS_50_check, edges_SS_50_check)   ## unique for edges_A1_check
+
+both <- intersect(edges_NetworkSS_50_check, edges_SS_50_check)  ## in both dataframe
+
+## merge with edges
+unique_Network_edges <- merge(unique_Network, edges_NetworkSS_50, by = c("from", "to"))
+unique_Network_edges <- arrange(unique_Network_edges, from, to) 
+
+
+unique_Network_edges_for_plot <- unique_Network_edges %>%
+  #inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  inner_join(nodes_new %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  rename(x = lon, y = lat) %>%
+  #inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  inner_join(nodes_new %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  rename(xend = lon, yend = lat)           ## generate the coordinate for "from" and "to" counties respectively
+
+```
+
+```{r NetworkSS_unique_Map_Plot3_50, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## OLD ##
+
+unique_Network_edges_for_plot <- unique_Network_edges_for_plot[, c(4, 5, 6, 7, 1, 2, 3)]
+#unique_A1_transformed <- usmap_transform(unique_A1_edges_for_plot, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
+#unique_A1_transformed <- unique_A1_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
+#unique_A1_transformed <- usmap_transform(unique_A1_transformed, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+
+## connections unique in A1
+#plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+#  #ggrepel::geom_label_repel(data = nodes_transformed,
+#  #                          aes(x = lon.1, y = lat.1, label = County1),
+#  #                          size = 3, alpha = 0.8,
+#  #                          label.r = unit(0.5, "lines"), label.size = 0.5
+#  #                          , seed = 1002) +
+#  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_segment(data = unique_A1_transformed, 
+#               aes(x = x.1, xend = xend.1,
+#                   y = y.1, yend = yend.1),
+#               color = "red",size = 0.35, alpha = 0.5) +
+#  labs(title = "Edges Unique in GOLAZO-A1",
+#       # subtitle = "Lines: red for GOLAZO_A1",
+#       size = "Magnitude") +
+#  theme(legend.position = "right")
+
+## NEW ## - below is my attemot at applying the above to Li's code
+
+# Transforming edge coordinates using usmap_transform function for both start and end points
+unique_Network_transformed <- usmap_transform(unique_Network_edges_for_plot, input_names = c("x", "y"))  %>% arrange(to) %>% arrange(from)
+unique_Network_transformed2 <- usmap_transform(unique_Network_edges_for_plot, input_names = c("xend", "yend"))  %>% arrange(to) %>% arrange(from)
+
+# Merging transformed edge coordinates into a single data frame
+unique_Network_merged_data_sf <- cbind(unique_Network_transformed, unique_Network_transformed2)
+
+
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  geom_segment(data = unique_Network_merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Edges Unique in Network-SS",
+       subtitle = "The Edges Estimated from Network-SS but not SS and US Map",
+       size = "Magnitude") +
+  theme(legend.position = "right")
+
+
+```
+
+
+```{r NetworkSS_unique_Map_Plot3_50_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 4, fig.width = 7, dev = "tikz"}
+
+par(mar = c(3.3, 3.6, 1.5, 1.1))  # bottom, left, top, right
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+## connections unique in A1
+#plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+#  #ggrepel::geom_label_repel(data = nodes_transformed,
+#  #                          aes(x = lon.1, y = lat.1, label = County1),
+#  #                          size = 3, alpha = 0.8,
+#  #                          label.r = unit(0.5, "lines"), label.size = 0.5
+#  #                          , seed = 1002) +
+#  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_segment(data = unique_A1_transformed, 
+#               aes(x = x.1, xend = xend.1,
+#                   y = y.1, yend = yend.1),
+#               color = "red",size = 0.35, alpha = 0.5) #+
+#  #labs(title = "Edges Unique in GOLAZO-A1",
+#  #     # subtitle = "Lines: red for GOLAZO_A1",
+#  #     size = "Magnitude") +
+#  #theme(legend.position = "right")
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  geom_segment(data = unique_Network_merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) #+
+  #labs(title = "Edges Unique in Network-SS",
+  #     subtitle = "The Edges Estimated from Network-SS but not SS and US Map",
+  #     size = "Magnitude") +
+  #theme(legend.position = "right")
+
+
+```
+
+```{r NetworkSS_unique_Map_Plot2_95, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+edges_SS_95_check <- dplyr::select(edges_SS_95, -corr)
+edges_NetworkSS_95_check <- dplyr::select(edges_NetworkSS_95, -corr)
+
+
+unique_Network <- dplyr::setdiff(edges_NetworkSS_95_check, edges_SS_95_check)   ## unique for edges_A1_check
+
+both <- dplyr::intersect(edges_NetworkSS_95_check, edges_SS_95_check)  ## in both dataframe
+
+## merge with edges
+unique_Network_edges <- merge(unique_Network, edges_NetworkSS_95, by = c("from", "to"))
+unique_Network_edges <- arrange(unique_Network_edges, from, to) 
+
+
+unique_Network_edges_for_plot <- unique_Network_edges %>%
+  #inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  inner_join(nodes_new %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  rename(x = lon, y = lat) %>%
+  #inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  inner_join(nodes_new %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  rename(xend = lon, yend = lat)           ## generate the coordinate for "from" and "to" counties respectively
+
+```
+
+```{r NetworkSS_unique_Map_Plot3_95, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## OLD ##
+
+unique_Network_edges_for_plot <- unique_Network_edges_for_plot[, c(4, 5, 6, 7, 1, 2, 3)]
+#unique_A1_transformed <- usmap_transform(unique_A1_edges_for_plot, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
+#unique_A1_transformed <- unique_A1_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
+#unique_A1_transformed <- usmap_transform(unique_A1_transformed, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+
+## connections unique in A1
+#plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+#  #ggrepel::geom_label_repel(data = nodes_transformed,
+#  #                          aes(x = lon.1, y = lat.1, label = County1),
+#  #                          size = 3, alpha = 0.8,
+#  #                          label.r = unit(0.5, "lines"), label.size = 0.5
+#  #                          , seed = 1002) +
+#  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_segment(data = unique_A1_transformed, 
+#               aes(x = x.1, xend = xend.1,
+#                   y = y.1, yend = yend.1),
+#               color = "red",size = 0.35, alpha = 0.5) +
+#  labs(title = "Edges Unique in GOLAZO-A1",
+#       # subtitle = "Lines: red for GOLAZO_A1",
+#       size = "Magnitude") +
+#  theme(legend.position = "right")
+
+## NEW ## - below is my attemot at applying the above to Li's code
+
+# Transforming edge coordinates using usmap_transform function for both start and end points
+unique_Network_transformed <- usmap_transform(unique_Network_edges_for_plot, input_names = c("x", "y"))  %>% arrange(to) %>% arrange(from)
+unique_Network_transformed2 <- usmap_transform(unique_Network_edges_for_plot, input_names = c("xend", "yend"))  %>% arrange(to) %>% arrange(from)
+
+# Merging transformed edge coordinates into a single data frame
+unique_Network_merged_data_sf <- cbind(unique_Network_transformed, unique_Network_transformed2)
+
+
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  geom_segment(data = unique_Network_merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Edges Unique in Network-SS",
+       subtitle = "The Edges Estimated from Network-SS but not SS and US Map",
+       size = "Magnitude") +
+  theme(legend.position = "right")
+
+
+```
+
+
+```{r NetworkSS_unique_Map_Plot3_95_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 4, fig.width = 7, dev = "tikz"}
+
+par(mar = c(3.3, 3.6, 1.5, 1.1))  # bottom, left, top, right
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+## connections unique in A1
+#plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+#  #ggrepel::geom_label_repel(data = nodes_transformed,
+#  #                          aes(x = lon.1, y = lat.1, label = County1),
+#  #                          size = 3, alpha = 0.8,
+#  #                          label.r = unit(0.5, "lines"), label.size = 0.5
+#  #                          , seed = 1002) +
+#  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_segment(data = unique_A1_transformed, 
+#               aes(x = x.1, xend = xend.1,
+#                   y = y.1, yend = yend.1),
+#               color = "red",size = 0.35, alpha = 0.5) #+
+#  #labs(title = "Edges Unique in GOLAZO-A1",
+#  #     # subtitle = "Lines: red for GOLAZO_A1",
+#  #     size = "Magnitude") +
+#  #theme(legend.position = "right")
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  geom_segment(data = unique_Network_merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) #+
+  #labs(title = "Edges Unique in Network-SS",
+  #     subtitle = "The Edges Estimated from Network-SS but not SS and US Map",
+  #     size = "Magnitude") +
+  #theme(legend.position = "right")
+
+
+```
+
+*COULD ALSO LOOK AT UNIQUE NONETWORK*
+
+### Unique edges SS (and not Network SS)
+
+```{r SS_unique_Map_Plot2_50, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+edges_SS_50_check <- dplyr::select(edges_SS_50, -corr)
+edges_NetworkSS_50_check <- dplyr::select(edges_NetworkSS_50, -corr)
+
+
+unique_SS <- dplyr::setdiff(edges_SS_50_check, edges_NetworkSS_50_check)   ## unique for edges_A1_check
+
+both <- intersect(edges_NetworkSS_50_check, edges_SS_50_check)  ## in both dataframe
+
+## merge with edges
+unique_SS_edges <- merge(unique_SS, edges_SS_50, by = c("from", "to"))
+unique_SS_edges <- arrange(unique_SS_edges, from, to) 
+
+
+unique_SS_edges_for_plot <- unique_SS_edges %>%
+  #inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  inner_join(nodes_new %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  rename(x = lon, y = lat) %>%
+  #inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  inner_join(nodes_new %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  rename(xend = lon, yend = lat)           ## generate the coordinate for "from" and "to" counties respectively
+
+```
+
+```{r SS_unique_Map_Plot3_50, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## OLD ##
+
+unique_SS_edges_for_plot <- unique_SS_edges_for_plot[, c(4, 5, 6, 7, 1, 2, 3)]
+#unique_A1_transformed <- usmap_transform(unique_A1_edges_for_plot, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
+#unique_A1_transformed <- unique_A1_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
+#unique_A1_transformed <- usmap_transform(unique_A1_transformed, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+
+## connections unique in A1
+#plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+#  #ggrepel::geom_label_repel(data = nodes_transformed,
+#  #                          aes(x = lon.1, y = lat.1, label = County1),
+#  #                          size = 3, alpha = 0.8,
+#  #                          label.r = unit(0.5, "lines"), label.size = 0.5
+#  #                          , seed = 1002) +
+#  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_segment(data = unique_A1_transformed, 
+#               aes(x = x.1, xend = xend.1,
+#                   y = y.1, yend = yend.1),
+#               color = "red",size = 0.35, alpha = 0.5) +
+#  labs(title = "Edges Unique in GOLAZO-A1",
+#       # subtitle = "Lines: red for GOLAZO_A1",
+#       size = "Magnitude") +
+#  theme(legend.position = "right")
+
+## NEW ## - below is my attemot at applying the above to Li's code
+
+# Transforming edge coordinates using usmap_transform function for both start and end points
+unique_SS_transformed <- usmap_transform(unique_SS_edges_for_plot, input_names = c("x", "y"))  %>% arrange(to) %>% arrange(from)
+unique_SS_transformed2 <- usmap_transform(unique_SS_edges_for_plot, input_names = c("xend", "yend"))  %>% arrange(to) %>% arrange(from)
+
+# Merging transformed edge coordinates into a single data frame
+unique_SS_merged_data_sf <- cbind(unique_SS_transformed, unique_SS_transformed2)
+
+
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  geom_segment(data = unique_SS_merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Edges Unique in SS",
+       subtitle = "The Edges Estimated from SS but not NetworkSS and US Map",
+       size = "Magnitude") +
+  theme(legend.position = "right")
+
+
+```
+
+
+```{r SS_unique_Map_Plot3_50_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 4, fig.width = 7, dev = "tikz"}
+
+par(mar = c(3.3, 3.6, 1.5, 1.1))  # bottom, left, top, right
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+## connections unique in A1
+#plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+#  #ggrepel::geom_label_repel(data = nodes_transformed,
+#  #                          aes(x = lon.1, y = lat.1, label = County1),
+#  #                          size = 3, alpha = 0.8,
+#  #                          label.r = unit(0.5, "lines"), label.size = 0.5
+#  #                          , seed = 1002) +
+#  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_segment(data = unique_A1_transformed, 
+#               aes(x = x.1, xend = xend.1,
+#                   y = y.1, yend = yend.1),
+#               color = "red",size = 0.35, alpha = 0.5) #+
+#  #labs(title = "Edges Unique in GOLAZO-A1",
+#  #     # subtitle = "Lines: red for GOLAZO_A1",
+#  #     size = "Magnitude") +
+#  #theme(legend.position = "right")
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  geom_segment(data = unique_SS_merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) #+
+  #labs(title = "Edges Unique in SS",
+  #     subtitle = "The Edges Estimated from SS but not Network-SS and US Map",
+  #     size = "Magnitude") +
+  #theme(legend.position = "right")
+
+
+```
+
+```{r SS_unique_Map_Plot2_95, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+edges_SS_95_check <- dplyr::select(edges_SS_95, -corr)
+edges_NetworkSS_95_check <- dplyr::select(edges_NetworkSS_95, -corr)
+
+
+unique_SS <- dplyr::setdiff(edges_SS_95_check, edges_NetworkSS_95_check)   ## unique for edges_A1_check
+
+both <- intersect(edges_NetworkSS_95_check, edges_SS_95_check)  ## in both dataframe
+
+## merge with edges
+unique_SS_edges <- merge(unique_SS, edges_SS_95, by = c("from", "to"))
+unique_SS_edges <- arrange(unique_SS_edges, from, to) 
+
+
+unique_SS_edges_for_plot <- unique_SS_edges %>%
+  #inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  inner_join(nodes_new %>% dplyr::select(id, lon, lat), by = c('from' = 'id')) %>%
+  rename(x = lon, y = lat) %>%
+  #inner_join(nodes %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  inner_join(nodes_new %>% dplyr::select(id, lon, lat), by = c('to' = 'id')) %>%
+  rename(xend = lon, yend = lat)           ## generate the coordinate for "from" and "to" counties respectively
+
+```
+
+```{r SS_unique_Map_Plot3_95, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE}
+
+## OLD ##
+
+unique_SS_edges_for_plot <- unique_SS_edges_for_plot[, c(4, 5, 6, 7, 1, 2, 3)]
+#unique_A1_transformed <- usmap_transform(unique_A1_edges_for_plot, input_names = c("x", "y"), output_names = c("x.1", "y.1"))
+#unique_A1_transformed <- unique_A1_transformed[, c(3, 4, 5, 6, 7, 8, 9, 1, 2)]
+#unique_A1_transformed <- usmap_transform(unique_A1_transformed, input_names = c("xend", "yend"), output_names = c("xend.1", "yend.1"))
+
+## connections unique in A1
+#plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+#  #ggrepel::geom_label_repel(data = nodes_transformed,
+#  #                          aes(x = lon.1, y = lat.1, label = County1),
+#  #                          size = 3, alpha = 0.8,
+#  #                          label.r = unit(0.5, "lines"), label.size = 0.5
+#  #                          , seed = 1002) +
+#  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_segment(data = unique_A1_transformed, 
+#               aes(x = x.1, xend = xend.1,
+#                   y = y.1, yend = yend.1),
+#               color = "red",size = 0.35, alpha = 0.5) +
+#  labs(title = "Edges Unique in GOLAZO-A1",
+#       # subtitle = "Lines: red for GOLAZO_A1",
+#       size = "Magnitude") +
+#  theme(legend.position = "right")
+
+## NEW ## - below is my attemot at applying the above to Li's code
+
+# Transforming edge coordinates using usmap_transform function for both start and end points
+unique_SS_transformed <- usmap_transform(unique_SS_edges_for_plot, input_names = c("x", "y"))  %>% arrange(to) %>% arrange(from)
+unique_SS_transformed2 <- usmap_transform(unique_SS_edges_for_plot, input_names = c("xend", "yend"))  %>% arrange(to) %>% arrange(from)
+
+# Merging transformed edge coordinates into a single data frame
+unique_SS_merged_data_sf <- cbind(unique_SS_transformed, unique_SS_transformed2)
+
+
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  geom_segment(data = unique_SS_merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) +
+  labs(title = "Edges Unique in SS",
+       subtitle = "The Edges Estimated from SS but not Network-SS and US Map",
+       size = "Magnitude") +
+  theme(legend.position = "right")
+
+
+```
+
+
+```{r SS_unique_Map_Plot3_95_tikz, include=TRUE,echo=TRUE, eval=TRUE,cache=FALSE, fig.height = 4, fig.width = 7, dev = "tikz"}
+
+par(mar = c(3.3, 3.6, 1.5, 1.1))  # bottom, left, top, right
+par(mgp = c(2.15, 1, 0))
+par(cex.lab = 1.25, cex.axis = 1.25, cex.main = 1.25)
+
+## connections unique in A1
+#plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+#  #ggrepel::geom_label_repel(data = nodes_transformed,
+#  #                          aes(x = lon.1, y = lat.1, label = County1),
+#  #                          size = 3, alpha = 0.8,
+#  #                          label.r = unit(0.5, "lines"), label.size = 0.5
+#  #                          , seed = 1002) +
+#  geom_point(data = unique_A1_transformed, aes(x = x.1, y = y.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_point(data = unique_A1_transformed, aes(x = xend.1, y = yend.1),    
+#             shape = 16, color = 'orangered3',
+#             stroke = 1) +
+#  geom_segment(data = unique_A1_transformed, 
+#               aes(x = x.1, xend = xend.1,
+#                   y = y.1, yend = yend.1),
+#               color = "red",size = 0.35, alpha = 0.5) #+
+#  #labs(title = "Edges Unique in GOLAZO-A1",
+#  #     # subtitle = "Lines: red for GOLAZO_A1",
+#  #     size = "Magnitude") +
+#  #theme(legend.position = "right")
+
+plot_usmap(fill = "white", color = "#2b2b2b", alpha = 0.25) +
+  geom_segment(data = unique_SS_merged_data_sf, 
+               aes(x = st_coordinates(geometry)[,1], xend = st_coordinates(geometry.1)[,1],
+                   y = st_coordinates(geometry)[,2], yend = st_coordinates(geometry.1)[,2]),
+               color = "red", size = 0.35, alpha = 0.5) +
+  geom_point(data = nodes_transformed, aes(x = st_coordinates(geometry)[,1], y =st_coordinates(geometry)[,2]),
+          fill = alpha("#b30000", 1/2), color = "#b30000", shape=21) #+
+  #labs(title = "Edges Unique in SS",
+  #     subtitle = "The Edges Estimated from SS but not Network-SS and US Map",
+  #     size = "Magnitude") +
+  #theme(legend.position = "right")
+
+
+```
+
+

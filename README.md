@@ -66,11 +66,18 @@ The folder `functions` contains two python files `my_utils.py` some useful funct
 The rest of the files provide code to implement the analysis using NumPyro. In particular, for file prefixed `sim`, `Covid` and `Stock` the files 
 
 + `_SS.py` implemented the Spike-and-Slab model with no network data
-+ `_NetworkSS.py` implemented the network spike-and-slab model 
++ `_NetworkSS_1mcmc.py` implemented the first mcmc of the network spike-and-slab model
++ `_NetworkSS_2mcmc.py` implemented the second mcmc of the network spike-and-slab model 
 + `_clean_data.py` did any additional data processing needed for python (after the data was pre-processed in R)
-+ `_summary.ipynb` allowed for the analysis of the results of the algorithms and the production of the plots seen in the paper  
++ `_summary.py` allowed for the analysis of the results of the algorithms and the production of the plots seen in the paper  
 
-`sim_timing.ipynb` provides the timing comparison of the network GLASSO implementation in NumPyro in Section E
+`sim_timing.ipynb` provides the timing comparison of the network GLASSO implementation in NumPyro in Section E.
+
+To run all the real-world experiments of the paper, including the additional experiments presented in the Supplementary Material, and produce the corresponding plots, please adjust the paths in the ```run.sh``` file and then move to the `numpyro` folder and just execute 
+```
+./run.sh
+```
+
 
 ## Network GLASSO 
 
